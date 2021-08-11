@@ -104,18 +104,68 @@
               <template v-if="hasData">
                 <tool-strip @focus-module="focusModule" />
               </template>
+              <v-spacer />
+              <div class="mt-2 mb-1 tool-separator" />
+              <v-badge color="primary" content="2" offset-x="20" offset-y="20">
+                <tool-button
+                  size="40"
+                  icon="mdi-cube-outline"
+                  name="2 tasks pending"
+                  tooltip-color="primary"
+                />
+              </v-badge>
+              <tool-button size="40" icon="mdi-bug" name="Debug & Errors" />
+              <tool-button
+                size="40"
+                icon="mdi-cog"
+                name="Settings"
+                @click="settingsDialog = !settingsDialog"
+              />
             </div>
             <div class="d-flex flex-column flex-grow-1">
               <template v-if="hasData">
                 <layout-grid :layout="layout" />
               </template>
               <template v-else>
-                <v-row
-                  no-gutters
-                  align="center"
-                  class="clickable"
-                  @click="userPromptFiles"
-                >
+                <div class="d-flex flex-column flex-grow-1">
+                  <div
+                    class="d-flex flex-row justify-center align-center"
+                    style="flex-basis: 40%"
+                  >
+                    <v-card
+                      flat
+                      dark
+                      id="startup-file-opener"
+                      class="text-center headline clickable"
+                      @click="userPromptFiles"
+                    >
+                      <div>
+                        <v-icon size="64">mdi-folder-open</v-icon>
+                      </div>
+                      <div>Click or drop files here to open</div>
+                    </v-card>
+                  </div>
+                  <div
+                    class="d-flex flex-column align-center"
+                    style="flex-basis: 60%"
+                  >
+                    <div class="text-h5 white--text">Sample datasets</div>
+                    <v-container>
+                      <v-row no-gutters align="center">
+                        <v-col v-for="i in 3" :key="i" cols="4">
+                          <div>
+                            <v-card class="ma-2">
+                              <v-img height="200" class="white--text">
+                                <v-card-title>Sample</v-card-title>
+                              </v-img>
+                            </v-card>
+                          </div>
+                        </v-col>
+                      </v-row>
+                    </v-container>
+                  </div>
+                </div>
+                <!--v-row no-gutters align="center">
                   <v-col>
                     <v-row justify="center">
                       <v-card
@@ -127,15 +177,24 @@
                         <div>
                           <v-icon size="64">mdi-folder-open</v-icon>
                         </div>
-                        <div>Click anywhere here to open files</div>
-                        <div class="mt-8">
-                          <v-icon size="64">mdi-arrow-down-bold</v-icon>
+                        <div>Click or drop files here to open</div>
+                      </v-card>
+                    </v-row>
+                    <v-row justify="center">
+                      <v-card
+                        flat
+                        dark
+                        color="transparent"
+                        class="text-center headline"
+                      >
+                        <div>
+                          <v-icon size="64">mdi-folder-open</v-icon>
                         </div>
-                        <div>Drop your files anywhere here to open</div>
+                        <div>Click or drop files here to open</div>
                       </v-card>
                     </v-row>
                   </v-col>
-                </v-row>
+                </v-row-->
               </template>
             </div>
           </div>
@@ -178,6 +237,12 @@
 
         <v-dialog v-model="aboutBoxDialog" width="50%">
           <about-box />
+        </v-dialog>
+
+        <v-dialog v-model="settingsDialog" width="75%">
+          <div style="height: 75vh">
+            <app-settings />
+          </div>
         </v-dialog>
 
         <notifications position="bottom left" :duration="4000" width="350px">
@@ -246,25 +311,26 @@ import VtkTwoView from './components/VtkTwoView.vue';
 import VtkThreeView from './components/VtkThreeView.vue';
 import LayoutGrid from './components/LayoutGrid.vue';
 import PatientBrowser from './components/PatientBrowser.vue';
-import Annotations from './components/Annotations.vue';
+// import Annotations from './components/Annotations.vue';
 import VolumeRendering from './components/VolumeRendering.vue';
 import MeasurementsModule from './components/MeasurementsModule.vue';
 import ModelBrowser from './components/ModelBrowser.vue';
 import DragAndDrop from './components/DragAndDrop.vue';
 import AboutBox from './components/AboutBox.vue';
 import AiModule from './components/AiModule.vue';
+import AppSettings from './components/AppSettings.vue';
 import ToolStrip from './components/ToolStrip.vue';
 
 export const Modules = [
   {
-    name: 'Patients & Images',
+    name: 'Images',
     icon: 'account',
     component: PatientBrowser,
   },
   {
     name: 'Annotations',
     icon: 'pencil',
-    component: Annotations,
+    component: null,
   },
   {
     name: 'Models',
@@ -349,6 +415,7 @@ export default {
     LayoutGrid,
     DragAndDrop,
     AboutBox,
+    AppSettings,
     ToolStrip,
   },
 
@@ -357,6 +424,7 @@ export default {
   data: () => ({
     selectedModule: Modules[0],
     aboutBoxDialog: false,
+    settingsDialog: false,
     errors: {
       dialog: false,
       fileLoading: [],
@@ -615,6 +683,17 @@ export default {
   position: relative;
   flex: 2;
   overflow: auto;
+}
+
+#startup-file-opener {
+  background-color: transparent;
+  border: 2px dashed #ccc;
+  padding: 6% 20% 6% 20%;
+}
+
+#startup-file-opener:hover {
+  background-color: rgba(255, 255, 255, 0.12);
+  border: 2px dashed #eee;
 }
 
 .toolbar-button {

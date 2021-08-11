@@ -7,6 +7,8 @@ function vtkTransformedSliceRepresentationProxy(publicAPI, model) {
 
   const superClass = { ...publicAPI };
 
+  model.mapper.setRelativeCoincidentTopologyPolygonOffsetParameters(100, 100);
+
   publicAPI.updateDependencies = () => {
     superClass.updateDependencies();
     // hack: set mode to something else so we can bypass
@@ -23,6 +25,9 @@ function vtkTransformedSliceRepresentationProxy(publicAPI, model) {
 
   // don't set colors on slices
   publicAPI.setColorBy = () => {};
+
+  // slices should be rounded (happens also in visualization.js)
+  publicAPI.setSlice = (s) => superClass.setSlice(Math.round(s));
 }
 
 // ----------------------------------------------------------------------------

@@ -163,6 +163,37 @@ export default () => ({
       commit('setRadius', radius);
     },
 
+    setLabelName({ commit }, { labelmapId, index, name }) {
+      commit('setLabelName', { labelmapId, index, name });
+    },
+
+    setLabelValue({ state, commit, dispatch }, { labelmapId, index, value }) {
+      // todo bounds checking
+      console.log(state.paintContexts, labelmapId);
+      const fromLabel = state.paintContexts[labelmapId].palette[index].label;
+      dispatch('relabelLabelmap', { labelmapId, fromLabel, toLabel: value });
+      commit('setLabelValue', { index, value });
+    },
+
+    async relabelLabelmap(
+      { dispatch, rootState },
+      { labelmapId, fromLabel, toLabel }
+    ) {
+      const image = rootState.data.vtkCache[labelmapId];
+      if (image) {
+        const voxels = image.getPointData().getScalars().getData();
+        for (let i = 0; i < voxels.length; i++) {
+          if (voxels[i] === fromLabel) {
+            voxels[i] = toLabel;
+          }
+        }
+
+        await dispatch('visualization/redrawPipeline', labelmapId, {
+          root: true,
+        });
+      }
+    },
+
     setLabelColor({ commit, rootState }, { labelmapID, label, color }) {
       if (labelmapID in rootState.data.index) {
         commit('setLabelColor', { labelmapID, label, color });

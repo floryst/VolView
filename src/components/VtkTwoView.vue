@@ -102,6 +102,7 @@ function resize2DCameraToFit(view, lookAxis, viewUpAxis, bounds) {
     scale = bw / 2 / viewAspect;
   }
 
+  // console.log(view.getName(), viewAspect >= boundsAspect, scale);
   camera.setParallelScale(scale);
 }
 

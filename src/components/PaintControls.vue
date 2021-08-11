@@ -64,12 +64,14 @@
 </template>
 
 <script>
-import { defineComponent, reactive } from '@vue/composition-api';
+import { computed, defineComponent } from '@vue/composition-api';
 
 import { useStore, useComputedState } from '@/src/composables/store';
-import { LABEL_SWATCHES } from '@/src/constants';
+import { DataTypes, NO_SELECTION, LABEL_SWATCHES } from '@/src/constants';
 
 import PaintLabelEditor from './PaintLabelEditor.vue';
+
+// const CREATE_LABELMAP_SENTINEL = -99;
 
 export default defineComponent({
   name: 'PaintControls',
@@ -79,32 +81,37 @@ export default defineComponent({
   },
 
   setup() {
-    const context = reactive({
-      palette: [
-        { label: 1, name: 'Label 1' },
-        { label: 2, name: 'Lung' },
-      ],
-      currentLabel: 1,
-    });
-
     const store = useStore();
 
-    const { radius, paintContext } = useComputedState({
+    const { radius, paintContext, currentLabelmap } = useComputedState({
       radius: {
         get: (state) => state.annotations.radius,
         set: (dispatch, val) => dispatch('annotations/setRadius', val),
       },
+      currentLabelmap: (state) => {
+        const { selectedBaseImage } = state;
+        const { currentLabelmapForImage } = state.annotations;
+        return currentLabelmapForImage[selectedBaseImage] ?? NO_SELECTION;
+      },
       paintContext: (state) => {
         const { selectedBaseImage } = state;
         const { currentLabelmapForImage, paintContexts } = state.annotations;
-        const currentLabelmap = currentLabelmapForImage[selectedBaseImage];
-        if (currentLabelmap in paintContexts) {
-          return paintContexts[currentLabelmap];
+        const labelmap = currentLabelmapForImage[selectedBaseImage];
+        if (labelmap in paintContexts) {
+          return paintContexts[labelmap];
         }
         return null;
       },
+      labelmaps: (state) => {
+        const { selectedBaseImage, data } = state;
+        const children = state.dataAssoc.childrenOf[selectedBaseImage] ?? [];
+        return children.filter(
+          (childId) => data.index[childId].type === DataTypes.Labelmap
+        );
+      },
     });
-    console.log('ignore', paintContext);
+    const palette = computed(() => paintContext.value?.palette);
+    const currentLabel = computed(() => paintContext.value?.currentLabel);
 
     const setLabelName = (index, name) => {
       console.log('name', index, name);
@@ -115,9 +122,9 @@ export default defineComponent({
       if (value <= 0 || value >= LABEL_SWATCHES.length) {
         return false;
       }
-      for (let i = 0; i < context.palette.length; i++) {
+      for (let i = 0; i < palette.value.length; i++) {
         if (index !== i) {
-          if (value === context.palette[i].label) {
+          if (value === palette.value[i].label) {
             return false;
           }
         }
@@ -127,16 +134,18 @@ export default defineComponent({
 
     const setLabelValue = (index, value) => {
       if (validateLabelValue(index)(value) === true) {
-        console.log('value', index, value);
-        context.palette[index].label = value;
-        // store.dispatch('annotations/setLabelValue', { index, value });
+        store.dispatch('annotations/setLabelValue', {
+          labelmapId: currentLabelmap.value,
+          index,
+          value,
+        });
       }
     };
 
     return {
       radius,
-      currentLabel: context.currentLabel,
-      palette: context.palette,
+      currentLabel,
+      palette,
       setLabelName,
       setLabelValue,
       validateLabelValue,

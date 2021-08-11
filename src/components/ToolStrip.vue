@@ -116,7 +116,7 @@ export default defineComponent({
       if (curTool === Tools.WindowLevel) {
         // do something
       } else if (curTool === Tools.Paint) {
-        emit('focus-module', 'Annotations');
+        emit('focus-module', 'Measurements');
       }
 
       if (WidgetSet.has(curTool)) {

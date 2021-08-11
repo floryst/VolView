@@ -5,7 +5,7 @@
     class="align-center ml-1 mt-0"
     :readonly="readOnly"
     :value="name"
-    @input="emit('change:name', $event)"
+    @input="$emit('change:name', $event)"
   >
     <template v-slot:prepend>
       <v-menu
@@ -45,7 +45,7 @@
         :disabled="readOnly"
         icon
         class="mt-0 pt-0"
-        @click="emit('delete')"
+        @click="$emit('delete')"
       >
         <v-icon v-show="!readOnly">mdi-delete</v-icon>
       </v-btn>

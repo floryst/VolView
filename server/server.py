@@ -46,7 +46,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-H', '--host', default='localhost',
                         help='Hostname for server to listen on')
-    parser.add_argument('-P', '--port', default=get_port(),
+    parser.add_argument('-P', '--port', default=4181,
                         help='Port for server to listen on')
     parser.add_argument('-b', '--no-browser', action='store_true',
                         help='Do not auto-open the browser')

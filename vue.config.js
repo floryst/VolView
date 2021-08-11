@@ -8,9 +8,7 @@ const vtkChainWebpack = require('vtk.js/Utilities/config/chainWebpack');
 
 module.exports = {
   lintOnSave: false,
-  transpileDependencies: [
-    'vuetify',
-  ],
+  transpileDependencies: ['vuetify'],
   chainWebpack: (config) => {
     vtkChainWebpack(config);
     // do not cache worker files
@@ -44,10 +42,13 @@ module.exports = {
     },
     plugins: [
       // disable webvr
-      new webpack.NormalModuleReplacementPlugin(/^webvr-polyfill$/, ((resource) => {
-        /* eslint-disable-next-line no-param-reassign */
-        resource.request = '@/src/vtk/webvr-empty.js';
-      })),
+      new webpack.NormalModuleReplacementPlugin(
+        /^webvr-polyfill$/,
+        (resource) => {
+          /* eslint-disable-next-line no-param-reassign */
+          resource.request = '@/src/vtk/webvr-empty.js';
+        }
+      ),
       new CopyWebpackPlugin([
         {
           from: path.join(__dirname, 'node_modules', 'itk', 'WebWorkers'),
@@ -58,7 +59,14 @@ module.exports = {
           to: path.join(__dirname, 'dist', 'itk', 'ImageIOs'),
         },
         {
-          from: path.join(__dirname, 'src', 'io', 'itk-dicom', 'web-build', 'dicom*'),
+          from: path.join(
+            __dirname,
+            'src',
+            'io',
+            'itk-dicom',
+            'web-build',
+            'dicom*'
+          ),
           to: path.join(__dirname, 'dist', 'itk', 'Pipelines'),
           flatten: true,
         },

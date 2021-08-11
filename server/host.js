@@ -1,6 +1,7 @@
 /* eslint-disable-next-line max-classes-per-file */
 import WebsocketConnection from 'wslink/src/WebsocketConnection';
 import { defer } from '../src/utils/common';
+import EventEmitter from '../src/utils/eventEmitter';
 
 import { deserialize, serialize } from './serialize';
 
@@ -28,8 +29,9 @@ function isValidResponse(response, types) {
 
 export class RpcError extends Error {}
 
-export default class HostConnection {
+export default class HostConnection extends EventEmitter {
   constructor(wsUrl) {
+    super();
     this.ws = null;
     this.wsUrl = wsUrl;
     this.connected = false;
@@ -50,15 +52,19 @@ export default class HostConnection {
             this.handleDeferredResponse
           );
 
+          this.emit('connected');
           resolve();
         });
 
         this.ws.onConnectionClose(() => {
           this.connected = false;
+          this.emit('disconnected');
         });
 
         this.ws.onConnectionError(() => {
-          reject(new Error('Failed to connect to ws endpoint'));
+          const err = new Error('Failed to connect to ws endpoint');
+          this.emit('error', err);
+          reject(err);
         });
 
         this.ws.connect();

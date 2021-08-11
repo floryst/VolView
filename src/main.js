@@ -5,7 +5,6 @@ import VueCompositionAPI from '@vue/composition-api';
 import VueNotifications from 'vue-notification';
 import vtkProxyManager from 'vtk.js/Sources/Proxy/Core/ProxyManager';
 import vtkMapper from 'vtk.js/Sources/Rendering/Core/Mapper';
-import vtkImageMapper from 'vtk.js/Sources/Rendering/Core/ImageMapper';
 
 import App from './App.vue';
 import createStore from './store';
@@ -16,6 +15,7 @@ import DicomIO from './io/dicom';
 import { createTREReader, registerAllReaders } from './io/readers';
 import proxyConfiguration from './vtk/proxy';
 import WidgetProvider from './widgets/widgetProvider';
+import RemoteConnection from './remoteConnection';
 
 Vue.config.productionTip = false;
 
@@ -38,11 +38,8 @@ fileIO.addSingleReader('tre', createTREReader(dicomIO));
 // Initialize global mapper topologies
 // polys and lines in the front
 vtkMapper.setResolveCoincidentTopologyToPolygonOffset();
-vtkMapper.setResolveCoincidentTopologyPolygonOffsetParameters(-3, -3);
-vtkMapper.setResolveCoincidentTopologyLineOffsetParameters(-3, -3);
-// image poly in the back
-vtkImageMapper.setResolveCoincidentTopologyToPolygonOffset();
-vtkImageMapper.setResolveCoincidentTopologyPolygonOffsetParameters(1, 1);
+vtkMapper.setResolveCoincidentTopologyPolygonOffsetParameters(50, 50);
+vtkMapper.setResolveCoincidentTopologyLineOffsetParameters(50, 50);
 
 const dependencies = {
   proxyManager,
@@ -52,6 +49,9 @@ const dependencies = {
 
 const store = createStore(dependencies);
 const widgetProvider = new WidgetProvider(store);
+const remote = new RemoteConnection(store);
+
+window.pxm = proxyManager;
 
 new Vue({
   store,
@@ -59,6 +59,7 @@ new Vue({
   proxyManager,
   provide: {
     widgetProvider,
+    Remote: remote,
     ProxyManager: proxyManager,
     Store: store,
   },

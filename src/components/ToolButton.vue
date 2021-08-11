@@ -1,5 +1,5 @@
 <template>
-  <v-tooltip right transition="slide-x-transition">
+  <v-tooltip right transition="slide-x-transition" :color="tooltipColor">
     <template v-slot:activator="{ on }">
       <v-btn
         text
@@ -29,6 +29,7 @@ export default {
     name: { type: String, required: true },
     size: { type: [Number, String], default: 40 },
     buttonClass: [String, Array, Object],
+    tooltipColor: { type: String },
   },
 
   computed: {
