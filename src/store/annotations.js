@@ -3,7 +3,11 @@ import Vue from 'vue';
 import vtkDataArray from 'vtk.js/Sources/Common/Core/DataArray';
 
 import vtkLabelMap from '@/src/vtk/LabelMap';
-import { DEFAULT_LABELMAP_COLORS, NO_SELECTION } from '@/src/constants';
+import { LABEL_COLORMAP } from '@/src/constants';
+
+export function defaultPalette() {
+  return [{ label: 1, name: 'Label 1' }];
+}
 
 export function findNextLabelMapName(names) {
   const seen = [];
@@ -39,26 +43,28 @@ export default () => ({
   namespaced: true,
 
   state: {
-    // if paint enabled, selct first labelmap
-    selectedLabelmap: NO_SELECTION,
-    currentLabelFor: {}, // labelmap ID -> currently selected label
-    labels: {}, // labelmapID -> label -> color
-    radius: 0,
+    currentLabelmapForImage: {}, // image ID -> labelmap ID
+    // labelmap ID -> paint context
+    // paint context: { palette, currentLabel }
+    paintContexts: {},
+    radius: 10,
     radiusRange: [1, 100],
   },
 
   mutations: {
-    setLabelColor(state, { labelmapID, label, color }) {
-      if (!(labelmapID in state.labels)) {
-        Vue.set(state.labels, labelmapID, {});
+    createPaintContext(state, labelmapId) {
+      if (!(labelmapId in state.paintContexts)) {
+        Vue.set(state.paintContexts, labelmapId, {
+          palette: defaultPalette(),
+          currentLabel: 1,
+        });
       }
-      Vue.set(state.labels[labelmapID], label, color);
     },
     cloneColorMap(state, { labelmapID, colormap }) {
       Vue.set(state.labels, labelmapID, { ...colormap });
     },
-    selectLabelmap(state, labelmapID) {
-      state.selectedLabelmap = labelmapID;
+    selectLabelmap(state, { imageId, labelmapId }) {
+      Vue.set(state.currentLabelmapForImage, imageId, labelmapId);
     },
     selectLabel(state, { labelmapID, label }) {
       // assumes that label exists
@@ -78,23 +84,23 @@ export default () => ({
     removeLabelmap(state, labelmapID) {
       Vue.delete(state.labels, labelmapID);
     },
+    removeData(state, dataId) {
+      // dataId may be either a labelmap ID or image ID
+      Vue.delete(state.currentLabelmapForImage, dataId);
+      Vue.delete(state.paintContexts, dataId);
+    },
   },
 
   actions: {
-    async createLabelmap({ commit, dispatch, rootState }, baseID) {
+    async createOrUseLastLabelmap({ dispatch, state }, imageId) {
+      if (!(imageId in state.currentLabelmapForImage)) {
+        await dispatch('createLabelmap', imageId);
+      }
+    },
+    async createLabelmap({ commit, dispatch, rootState }, imageId) {
       const { data } = rootState;
-      if (baseID in data.vtkCache) {
-        const imageData = data.vtkCache[baseID];
-        const id = data.nextID;
-
-        commit(
-          'associateData',
-          {
-            parentID: baseID,
-            childID: id,
-          },
-          { root: true }
-        );
+      if (imageId in data.vtkCache) {
+        const imageData = data.vtkCache[imageId];
 
         const existingNames = data.labelmapIDs.map(
           (lid) => data.index[lid].name
@@ -103,29 +109,39 @@ export default () => ({
 
         // create labelmap from imageData
         const labelmap = createLabelmapFromImage(imageData);
-        commit('addLabelmap', { name, image: labelmap }, { root: true });
+        labelmap.setColorMap(LABEL_COLORMAP);
 
-        // set default colormap
-        labelmap.setColorMap(DEFAULT_LABELMAP_COLORS);
+        const labelmapId = await dispatch(
+          'importLabelMap',
+          { name, labelMap: labelmap, parent: imageId },
+          { root: true }
+        );
+
+        commit('selectLabelmap', {
+          imageId,
+          labelmapId,
+        });
+
+        /*
         commit('cloneColorMap', {
           labelmapID: id,
           colormap: DEFAULT_LABELMAP_COLORS,
         });
+        */
 
-        // select default label
+        /* set default label to 1
         commit('selectLabel', {
           labelmapID: id,
-          label: 1, // DEFAULT_LABELMAP_COLORS has label 1
+          label: 1,
         });
-
-        await dispatch('selectLabelmap', id);
-        await dispatch(
-          { type: 'visualization/updateScene', reset: false },
-          { root: true }
-        );
+        */
       }
     },
-
+    createPaintContext({ commit, state }, labelmapId) {
+      if (!(labelmapId in state.paintContexts)) {
+        commit('createPaintContext', labelmapId);
+      }
+    },
     selectLabelmap({ commit, rootState }, labelmapID) {
       if (rootState.data.labelmapIDs.includes(labelmapID)) {
         const labelmap = rootState.data.vtkCache[labelmapID];
@@ -166,10 +182,8 @@ export default () => ({
       // TODO loop through labelmap pixels and clear those with label
     },
 
-    removeData({ commit, state }, dataID) {
-      if (dataID === state.selectedLabelmap) {
-        commit('selectLabelmap', NO_SELECTION);
-      }
+    removeData({ commit }, dataID) {
+      commit('removeData', dataID);
     },
   },
 });

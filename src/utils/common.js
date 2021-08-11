@@ -99,3 +99,16 @@ export function multiComputed(fn) {
   );
   return a;
 }
+
+/**
+ * Converts a hex RGB(A) to an rgba object.
+ */
+export function hexToRGBA(hex) {
+  const rgbaHex = `${hex.slice(1)}ff`.slice(0, 8);
+  return {
+    r: parseInt(rgbaHex.slice(0, 2), 16),
+    g: parseInt(rgbaHex.slice(2, 4), 16),
+    b: parseInt(rgbaHex.slice(4, 6), 16),
+    a: parseInt(rgbaHex.slice(6, 8), 16),
+  };
+}

@@ -4,7 +4,7 @@ import { observe, ref, computed } from './reactivity';
 
 const INVALID = -1;
 
-function is2DView(view) {
+export function is2DView(view) {
   return !!view?.getAxis;
 }
 
@@ -16,6 +16,19 @@ export function renderViewAndWidgets(view) {
 export function watchStore(store, getter, fn, opts) {
   const stop = store.watch(getter, fn, opts);
   onDeleted(stop);
+}
+
+/**
+ * NOTE: This is inconsistent usage compared to the one in
+ * composables/store.js. This one doesn't support multiple
+ * computed values. Also, this depends on the widget lifecycle.
+ */
+export function useComputedState(store, getter) {
+  const state = ref(getter(store.state, store.getters));
+  watchStore(store, getter, (val) => {
+    state.value = val;
+  });
+  return state;
 }
 
 export function useCurrentView() {
@@ -33,6 +46,58 @@ export function useCurrentView() {
   });
 
   return { currentView, currentViewType };
+}
+
+export function useCurrentSlice(store) {
+  const { currentView } = useCurrentView();
+
+  const slices = useComputedState(store, (state) => state.visualization.slices);
+
+  const inSliceView = computed(() => is2DView(currentView.value));
+  const currentAxis = computed(() =>
+    inSliceView.value ? currentView.value.getAxis() : null
+  );
+  const currentSlice = computed(() => {
+    if (currentAxis.value !== null) {
+      return slices.value['xyz'[currentAxis.value]];
+    }
+    return null;
+  });
+
+  return {
+    inSliceView,
+    currentAxis,
+    currentSlice,
+  };
+}
+
+export function usePlaneManipulator(store) {
+  const { currentAxis, currentSlice } = useCurrentSlice(store);
+
+  const plane = computed(() => {
+    const currentAxisVal = currentAxis.value;
+    const currentSliceVal = currentSlice.value;
+
+    // expects IJK slicing
+    if (currentAxisVal !== null && currentSliceVal !== null) {
+      const { imageParams } = store.state.visualization;
+
+      const normal = [0, 0, 0];
+      const origin = [0, 0, 0];
+      normal[currentAxisVal] = 1;
+      origin[currentAxisVal] = currentSliceVal;
+
+      vec3.transformMat3(normal, normal, imageParams.direction);
+      vec3.transformMat4(origin, origin, imageParams.indexToWorld);
+      return { normal, origin };
+    }
+    return null;
+  });
+
+  const planeNormal = computed(() => plane.value?.normal || null);
+  const planeOrigin = computed(() => plane.value?.origin || null);
+
+  return { planeNormal, planeOrigin };
 }
 
 export function useSliceFollower(
