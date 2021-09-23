@@ -4,43 +4,19 @@ const webpack = require('webpack');
 /* eslint-disable-next-line import/no-extraneous-dependencies */
 const CopyWebpackPlugin = require('copy-webpack-plugin');
 
-const vtkChainWebpack = require('vtk.js/Utilities/config/chainWebpack');
-
 module.exports = {
   lintOnSave: false,
   transpileDependencies: [
     'vuetify',
   ],
-  chainWebpack: (config) => {
-    vtkChainWebpack(config);
-    // do not cache worker files
-    // https://github.com/webpack-contrib/worker-loader/issues/195
-    config.module.rule('js').exclude.add(/\.worker\.js$/);
-  },
   configureWebpack: {
     resolve: {
       alias: {
         '@': __dirname,
         // Use lite colormap
-        'vtk.js/Sources/Rendering/Core/ColorTransferFunction/ColorMaps.json':
-          'vtk.js/Sources/Rendering/Core/ColorTransferFunction/LiteColorMaps.json',
+        '@kitware/vtk.js/Rendering/Core/ColorTransferFunction/ColorMaps.json':
+          '@kitware/vtk.js/Rendering/Core/ColorTransferFunction/LiteColorMaps.json',
       },
-    },
-    module: {
-      rules: [
-        {
-          test: /\.worker\.js$/,
-          exclude: /node_modules/,
-          use: [
-            {
-              loader: 'worker-loader',
-              options: {
-                inline: 'no-fallback',
-              },
-            },
-          ],
-        },
-      ],
     },
     plugins: [
       // disable webvr

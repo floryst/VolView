@@ -3,7 +3,7 @@ import sinon from 'sinon';
 import chaiAsPromised from 'chai-as-promised';
 import sinonChai from 'sinon-chai';
 
-import vtkITKHelper from 'vtk.js/Sources/Common/DataModel/ITKHelper';
+import vtkITKHelper from '@kitware/vtk.js/Common/DataModel/ITKHelper';
 
 import dicom, { imageCacheMultiKey } from '@/src/store/dicom';
 import DicomIO from '@/src/io/dicom';
