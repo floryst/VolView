@@ -8,7 +8,7 @@ export * from '@vue/reactivity';
  *
  * Similar to vue.js watch, but for the widgets.
  */
-export const observe = (source, callback, options = {}) => {
+export const observe = (source, callback = null, options = {}) => {
   let getter = null;
   let isStopped = false;
 
@@ -26,9 +26,13 @@ export const observe = (source, callback, options = {}) => {
   let oldValue = getter();
 
   const scheduler = () => {
-    const value = runner();
-    callback(value, oldValue);
-    oldValue = value;
+    if (callback) {
+      const value = runner();
+      callback(value, oldValue);
+      oldValue = value;
+    } else {
+      runner();
+    }
   };
 
   runner = effect(getter, {
@@ -53,3 +57,6 @@ export const observe = (source, callback, options = {}) => {
 
   return stopObserving;
 };
+
+export const watch = observe;
+export const watchEffect = (eff, options) => watch(eff, null, options);

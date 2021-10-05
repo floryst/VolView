@@ -34,7 +34,7 @@ export default {
   },
   watch: {
     value(v) {
-      this.internalValue = v;
+      this.selectItem(v);
     },
   },
   mounted() {

@@ -8,15 +8,23 @@ export function useStore(key = defaultKey) {
 
 /**
  *
- * @param {{ [name: string]: Function}} computedFns
+ * @param {{ [name: string]: Function} | Function} computedFns
  */
 export function useComputedState(computedFns) {
   const store = useStore();
-  return Object.entries(computedFns).reduce(
-    (acc, [name, compFn]) => ({
+  return Object.entries(computedFns).reduce((acc, [name, compFn]) => {
+    let cmpVal;
+    if ('get' in compFn && 'set' in compFn) {
+      cmpVal = computed({
+        get: () => compFn.get(store.state, store.getters),
+        set: (val) => compFn.set(store.dispatch, val),
+      });
+    } else {
+      cmpVal = computed(() => compFn(store.state, store.getters));
+    }
+    return {
       ...acc,
-      [name]: computed(() => compFn(store.state, store.getters)),
-    }),
-    {}
-  );
+      [name]: cmpVal,
+    };
+  }, {});
 }

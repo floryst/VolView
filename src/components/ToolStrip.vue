@@ -7,21 +7,33 @@
       <tool-button
         size="40"
         icon="mdi-circle-half-full"
-        name="Window & Level"
+        name="Window/Level"
         :buttonClass="['tool-btn', active ? 'tool-btn-selected' : '']"
         :disabled="noBaseImage"
         @click="toggle"
       />
     </groupable-item>
-    <groupable-item v-slot:default="{ active }" :value="Tools.Paint">
-      <tool-button
-        size="40"
-        icon="mdi-brush"
-        name="Paint"
-        :buttonClass="['tool-btn', active ? 'tool-btn-selected' : '']"
-        :disabled="noBaseImage"
-        @click="handlePaintToggle"
-      />
+    <groupable-item v-slot:default="{ active, toggle }" :value="Tools.Paint">
+      <v-menu offset-x :close-on-content-click="false" :disabled="!active">
+        <template v-slot:activator="{ attrs, on }">
+          &nbsp;
+          <tool-button
+            size="40"
+            icon="mdi-brush"
+            name="Paint"
+            :buttonClass="['tool-btn', active ? 'tool-btn-selected' : '']"
+            :disabled="noBaseImage"
+            @click.stop="toggle"
+            v-on="on"
+            v-bind="attrs"
+          >
+            <v-icon v-if="active" class="menu-more" size="18">
+              mdi-menu-right
+            </v-icon>
+          </tool-button>
+        </template>
+        <paint-controls />
+      </v-menu>
     </groupable-item>
     <groupable-item v-slot:default="{ active, toggle }" :value="Tools.Ruler">
       <tool-button
@@ -58,6 +70,7 @@ import { NO_WIDGET, NO_SELECTION } from '@/src/constants';
 import ToolButton from './ToolButton.vue';
 import ItemGroup from './ItemGroup.vue';
 import GroupableItem from './GroupableItem.vue';
+import PaintControls from './PaintControls.vue';
 
 const Tools = {
   WindowLevel: 'WindowLevel',
@@ -69,14 +82,16 @@ const Tools = {
 const WidgetSet = new Set([Tools.Paint, Tools.Ruler, Tools.Crosshairs]);
 
 export default defineComponent({
+  name: 'ToolStrip',
   components: {
     ToolButton,
     ItemGroup,
     GroupableItem,
+    PaintControls,
   },
   setup(props, { emit }) {
     const currentTool = ref(Tools.WindowLevel); // string: tool name
-    const showPaintMenu = ref(false);
+    const allowPaintMenu = ref(false);
 
     const widgetProvider = useWidgetProvider();
 
@@ -84,22 +99,6 @@ export default defineComponent({
       noBaseImage: (state) => state.selectedBaseImage === NO_SELECTION,
       focusedWidget: (state) => state.widgets.focusedWidget,
     });
-
-    // re-implementation of the groupable-item toggle slot function
-    function toggle(name) {
-      const current = currentTool.value;
-      currentTool.value = current === name ? null : name;
-      return currentTool.value === name;
-    }
-
-    function handlePaintToggle() {
-      const active = currentTool.value === Tools.Paint;
-      if (active) {
-        showPaintMenu.value = true;
-      } else if (toggle(Tools.Paint)) {
-        emit('focusModule', 'Annotations');
-      }
-    }
 
     // handle case when widget unfocuses self while tool is active
     // in such event, create a new widget
@@ -114,9 +113,13 @@ export default defineComponent({
       // unfocus existing widgets
       widgetProvider.unfocus();
 
-      if (curTool === 'WindowLevel') {
+      if (curTool === Tools.WindowLevel) {
         // do something
-      } else if (WidgetSet.has(curTool)) {
+      } else if (curTool === Tools.Paint) {
+        emit('focus-module', 'Measurements');
+      }
+
+      if (WidgetSet.has(curTool)) {
         const widget = widgetProvider.createWidget(curTool);
         widgetProvider.focusWidget(widget.id);
       }
@@ -124,10 +127,9 @@ export default defineComponent({
 
     return {
       currentTool,
-      showPaintMenu,
+      allowPaintMenu,
       noBaseImage,
       Tools,
-      handlePaintToggle,
     };
   },
 });
@@ -136,5 +138,12 @@ export default defineComponent({
 <style>
 .tool-btn-selected {
   background-color: rgba(128, 128, 255, 0.7);
+}
+</style>
+
+<style scoped>
+.menu-more {
+  position: absolute;
+  right: -50%;
 }
 </style>

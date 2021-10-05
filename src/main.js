@@ -5,7 +5,6 @@ import VueCompositionAPI from '@vue/composition-api';
 import VueNotifications from 'vue-notification';
 import vtkProxyManager from 'vtk.js/Sources/Proxy/Core/ProxyManager';
 import vtkMapper from 'vtk.js/Sources/Rendering/Core/Mapper';
-import vtkImageMapper from 'vtk.js/Sources/Rendering/Core/ImageMapper';
 
 import App from './App.vue';
 import createStore from './store';
@@ -38,11 +37,8 @@ fileIO.addSingleReader('tre', createTREReader(dicomIO));
 // Initialize global mapper topologies
 // polys and lines in the front
 vtkMapper.setResolveCoincidentTopologyToPolygonOffset();
-vtkMapper.setResolveCoincidentTopologyPolygonOffsetParameters(-3, -3);
-vtkMapper.setResolveCoincidentTopologyLineOffsetParameters(-3, -3);
-// image poly in the back
-vtkImageMapper.setResolveCoincidentTopologyToPolygonOffset();
-vtkImageMapper.setResolveCoincidentTopologyPolygonOffsetParameters(1, 1);
+vtkMapper.setResolveCoincidentTopologyPolygonOffsetParameters(50, 50);
+vtkMapper.setResolveCoincidentTopologyLineOffsetParameters(50, 50);
 
 const dependencies = {
   proxyManager,

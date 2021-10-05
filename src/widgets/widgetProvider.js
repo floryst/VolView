@@ -1,13 +1,19 @@
-// import PaintWidget from '@/src/widgets/paint';
+import { ViewTypes } from 'vtk.js/Sources/Widgets/Core/WidgetManager/Constants';
+
+import PaintWidget from '@/src/widgets/paint';
 import RulerWidget from '@/src/widgets/ruler';
 import CrosshairsWidget from '@/src/widgets/crosshairs';
 import { createContext, openContext, closeCurrentContext } from './context';
 
 export const DEFAULT_NAME_LOOKUP = {
-  // Paint: PaintWidget,
+  Paint: PaintWidget,
   Ruler: RulerWidget,
   Crosshairs: CrosshairsWidget,
 };
+
+function getViewType(viewProxy) {
+  return viewProxy.isA('vtkView2DProxy') ? ViewTypes.SLICE : ViewTypes.DEFAULT;
+}
 
 function generateHookArgs(widget, view = null, viewTypeMap = null) {
   const args = {
@@ -97,7 +103,8 @@ function addWidgetToView(widget, view) {
       return;
     }
 
-    const viewWidget = wm.addWidget(widget.factory, this.viewTypes);
+    const viewType = getViewType(view);
+    const viewWidget = wm.addWidget(widget.factory, viewType);
     widget.instances.set(view, viewWidget);
 
     widget.context.invokeHook(
@@ -366,6 +373,7 @@ export default class WidgetProvider {
     const idx = this.views.indexOf(view);
     if (idx > -1) {
       this.views.splice(idx, 1);
+      this.viewTypes.delete(view);
       Array.from(this.widgetMap.values()).forEach((widget) =>
         removeWidgetFromView.bind(this)(widget, view)
       );

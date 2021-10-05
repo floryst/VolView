@@ -15,7 +15,6 @@ Vue.use(Vuex);
 
 export const initialState = () => ({
   data: {
-    nextID: 1,
     index: {},
     imageIDs: [],
     dicomIDs: [],

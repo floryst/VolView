@@ -7,8 +7,14 @@ import { removeFromArray } from '@/src/utils/common';
 
 import { FileTypes } from '../io/io';
 
-function addImageOfType(state, { name, image, type }) {
-  const id = state.data.nextID;
+export function getNextId() {
+  if (!('$id' in getNextId)) {
+    getNextId.$id = 1;
+  }
+  return getNextId.$id++;
+}
+
+function addImageOfType(state, { id, name, image, type }) {
   state.data.vtkCache[id] = image;
   if (type === DataTypes.Image) {
     state.data.imageIDs.push(id);
@@ -24,7 +30,6 @@ function addImageOfType(state, { name, image, type }) {
       spacing: image.getSpacing(),
     },
   };
-  state.data.nextID += 1;
 }
 
 function extractFromZip(zip, path) {
@@ -56,24 +61,27 @@ async function extractAllFilesFromZips(zips) {
 
 export const mutations = {
   /**
-   * Args: { image, name }
+   * Args: { id, image, name }
+   * id is expected to be unique.
    */
-  addImage(state, { name, image }) {
-    addImageOfType(state, { name, image, type: DataTypes.Image });
+  addImage(state, { id, name, image }) {
+    addImageOfType(state, { id, name, image, type: DataTypes.Image });
   },
 
   /**
-   * Args: { image, name }
+   * Args: { id, image, name }
+   * id is expected to be unique.
    */
-  addLabelmap(state, { name, image }) {
-    addImageOfType(state, { name, image, type: DataTypes.Labelmap });
+  addLabelmap(state, { id, name, image }) {
+    addImageOfType(state, { id, name, image, type: DataTypes.Labelmap });
   },
 
   /**
-   * Args: { image, name }
+   * Args: { id, model, name }
+   * id is expected to be unique.
    */
   addModel(state, { name, model }) {
-    const id = state.data.nextID;
+    const id = getNextId();
     state.data.vtkCache[id] = model;
     state.data.modelIDs.push(id);
     state.data.index = {
@@ -83,15 +91,13 @@ export const mutations = {
         name,
       },
     };
-    state.data.nextID += 1;
   },
 
   /**
    * Args: { patientKey, studyKey, volumeKey }
+   * id is expected to be unique.
    */
-  addDicom(state, { patientKey, studyKey, volumeKey }) {
-    const id = state.data.nextID;
-    state.data.nextID += 1;
+  addDicom(state, { id, patientKey, studyKey, volumeKey }) {
     // save volumeKey -> id mapping
     state.dicomVolumeToDataID = {
       ...state.dicomVolumeToDataID,
@@ -214,6 +220,7 @@ export const makeActions = (dependencies) => ({
       updatedVolumeKeys.forEach((keys) => {
         if (!(keys.volumeKey in state.dicomVolumeToDataID)) {
           commit('addDicom', {
+            id: getNextId(),
             patientKey: keys.patientKey,
             studyKey: keys.studyKey,
             volumeKey: keys.volumeKey,
@@ -245,11 +252,13 @@ export const makeActions = (dependencies) => ({
           if (isVtkObject(obj)) {
             if (obj.isA('vtkImageData')) {
               commit('addImage', {
+                id: getNextId(),
                 name,
                 image: obj,
               });
             } else if (obj.isA('vtkPolyData')) {
               commit('addModel', {
+                id: getNextId(),
                 name,
                 model: obj,
               });
@@ -283,17 +292,21 @@ export const makeActions = (dependencies) => ({
     return errors;
   },
 
-  importLabelMap({ state, commit, dispatch }, { labelMap, name, parent }) {
-    const id = state.data.nextID;
-    commit('addLabelmap', { name, image: labelMap });
+  async importLabelMap({ commit, dispatch }, { labelMap, name, parent }) {
+    const id = getNextId();
+    commit('addLabelmap', { id, name, image: labelMap });
     commit('associateData', {
       parentID: parent,
       childID: id,
     });
-    return dispatch({
+    await dispatch('annotations/createPaintContext', id);
+
+    await dispatch({
       type: 'visualization/updateScene',
       reset: false,
     });
+
+    return id;
   },
 
   /**
