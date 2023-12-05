@@ -370,7 +370,9 @@ export function toAscii(
  * @param args
  * @returns
  */
-export function asCoroutine(gen: Generator) {
-  gen.next(); // run initial code
-  return (value: any) => gen.next(value);
+export function asCoroutine<T, R, N>(gen: Generator<T, R, N>) {
+  // run initial code
+  const result = gen.next();
+  if (result.done) return () => result;
+  return (value: N): IteratorResult<T, R> => gen.next(value);
 }

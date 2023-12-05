@@ -7,8 +7,8 @@ import { toAscii } from '@/src/utils';
  * Expects Uint8Array inputs
  */
 export default class StreamingByteReader {
-  private leftover: ByteDeque;
-  private pos = 0;
+  protected leftover: ByteDeque;
+  protected pos = 0;
 
   constructor() {
     this.leftover = new ByteDeque();
@@ -29,21 +29,16 @@ export default class StreamingByteReader {
       throw new Error('Offset must not be negative');
     }
 
-    let remaining = offset;
-    while (remaining > 0) {
-      if (this.leftover.isEmpty()) {
-        this.leftover.pushEnd(yield);
-      }
-      const leftoverSize = this.leftover.size;
-      this.leftover.popStart(remaining, true);
-      remaining -= leftoverSize;
+    while (this.leftover.size < offset) {
+      this.leftover.pushEnd(yield);
     }
 
+    this.leftover.eraseStart(offset);
     this.pos += offset;
   }
 
   /**
-   * Reads a number of byte.
+   * Reads a number of bytes.
    * @param length
    * @param param1
    * @returns
@@ -56,45 +51,18 @@ export default class StreamingByteReader {
       throw new Error('Length must be a positive number');
     }
 
-    if (this.leftover.size >= length) {
-      const data = this.leftover.popStart(length);
-      if (data) {
-        if (peek) {
-          this.leftover.pushStart(data);
-        } else {
-          this.pos += length;
-        }
-        return data;
-      }
+    while (this.leftover.size < length) {
+      this.leftover.pushEnd(yield);
     }
 
-    const data = new Uint8Array(length);
-    let offset = 0;
-
-    // ingest all leftover bytes
-    if (this.leftover.size) {
-      offset = this.leftover.size;
-      data.set(this.leftover.popAll()!, 0);
-    }
-
-    while (offset < length) {
-      const bytes = yield;
-      const remaining = length - offset;
-      if (bytes.length <= remaining) {
-        data.set(bytes, offset);
-        offset += bytes.length;
-      } else {
-        data.set(bytes.subarray(0, remaining), offset);
-        offset = length;
-        this.leftover.pushStart(bytes.subarray(remaining));
-      }
-    }
+    const data = this.leftover.popStart(length);
 
     if (peek) {
       this.leftover.pushStart(data);
     } else {
       this.pos += length;
     }
+
     return data;
   }
 
