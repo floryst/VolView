@@ -11,7 +11,6 @@ import {
 } from '@/src/io/import/common';
 import { DataSource, FileDataSource } from '@/src/io/import/dataSource';
 import handleDicomFile from '@/src/io/import/processors/handleDicomFile';
-import downloadUrl from '@/src/io/import/processors/downloadUrl';
 import extractArchive from '@/src/io/import/processors/extractArchive';
 import extractArchiveTargetFromCache from '@/src/io/import/processors/extractArchiveTarget';
 import handleAmazonS3 from '@/src/io/import/processors/handleAmazonS3';
@@ -24,6 +23,8 @@ import handleConfig from '@/src/io/import/processors/handleConfig';
 import { useDICOMStore } from '@/src/store/datasets-dicom';
 import { makeDICOMSelection, makeImageSelection } from '@/src/store/datasets';
 import { applyConfig } from '@/src/io/import/configSchema';
+import handleDicomStream from '@/src/io/import/processors/handleDicomStream';
+import updateUriType from '@/src/io/import/processors/updateUriType';
 
 /**
  * Tries to turn a thrown object into a meaningful error string.
@@ -131,14 +132,19 @@ export async function importDataSources(dataSources: DataSource[]) {
   };
 
   const middleware = [
-    // updating the file type should be first in the pipeline
+    // updating the file/uri type should be first in the pipeline
     updateFileMimeType,
+    updateUriType,
+
     // before extractArchive as .zip extension is part of state file check
     restoreStateFile,
     handleRemoteManifest,
     handleGoogleCloudStorage,
     handleAmazonS3,
-    downloadUrl,
+
+    // stream handling
+    handleDicomStream,
+
     extractArchiveTargetFromCache,
     extractArchive,
     handleConfig, // collect config files to apply later

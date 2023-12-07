@@ -1,4 +1,5 @@
-import { Maybe } from '@/src/types';
+import { Chunk } from '@/src/core/streaming/chunk';
+import { Maybe, PartialWithRequired } from '@/src/types';
 
 /**
  * Represents a URI source with a file name for the downloaded resource.
@@ -9,6 +10,8 @@ import { Maybe } from '@/src/types';
 export interface UriSource {
   uri: string;
   name: string;
+  mime?: string;
+  bytes?: Uint8Array[];
 }
 
 /**
@@ -43,6 +46,14 @@ export interface DicomSource {
 }
 
 /**
+ * Represents a data chunk for further processing and import.
+ */
+export interface ChunkSource {
+  chunk: Chunk;
+  mime: string;
+}
+
+/**
  * Represents a source of data.
  *
  * If the parent property is set, it represents the DataSource from which this
@@ -59,6 +70,7 @@ export interface DataSource {
   uriSrc?: UriSource;
   archiveSrc?: ArchiveSource;
   dicomSrc?: DicomSource;
+  chunkSrc?: ChunkSource;
   parent?: DataSource;
 }
 
@@ -66,6 +78,8 @@ export interface DataSource {
  * A data source that has a File.
  */
 export type FileDataSource = PartialWithRequired<DataSource, 'fileSrc'>;
+
+export type ChunkDataSource = PartialWithRequired<DataSource, 'chunkSrc'>;
 
 /**
  * Creates a DataSource from a single file.
@@ -84,10 +98,15 @@ export const fileToDataSource = (file: File): DataSource => ({
  * @param uri
  * @returns
  */
-export const uriToDataSource = (uri: string, name: string): DataSource => ({
+export const uriToDataSource = (
+  uri: string,
+  name: string,
+  mime?: string
+): DataSource => ({
   uriSrc: {
     uri,
     name,
+    mime,
   },
 });
 
