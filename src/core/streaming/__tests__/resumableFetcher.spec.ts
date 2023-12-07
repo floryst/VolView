@@ -31,6 +31,7 @@ describe('ResumableFetcher', () => {
     }
 
     stream = await fetcher.start();
+    size = 0;
     // @ts-ignore
     for await (const chunk of stream) {
       size += chunk.length;

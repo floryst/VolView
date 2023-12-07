@@ -15,6 +15,15 @@ export interface ResumableRequestInit extends RequestInit {
 
 export const StopSignal = Symbol('StopSignal');
 
+/**
+ * A resumable fetcher that caches previously downloaded partial streams.
+ *
+ * This fetcher falls back to downloading the entire stream if the server does
+ * not support the Range header with bytes.
+ *
+ * A new call to start() will stream the cached stream until empty, after which
+ * the partial response is streamed.
+ */
 export class ResumableFetcher implements Fetcher {
   private abortController: Maybe<AbortController>;
   private fetch: typeof fetch;
@@ -83,8 +92,14 @@ export class ResumableFetcher implements Fetcher {
       this.chunks = [];
     }
 
+    const initialChunks = [...this.chunks];
+
     const transformStream = new TransformStream({
       transform: (chunk, controller) => {
+        // send initial chunks
+        while (initialChunks.length) {
+          controller.enqueue(initialChunks.shift()!);
+        }
         this.chunks.push(chunk);
         controller.enqueue(chunk);
       },
