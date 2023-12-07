@@ -9,7 +9,7 @@ import {
   LoadableResult,
   isLoadableResult,
 } from '@/src/io/import/common';
-import { DataSource, DataSourceWithFile } from '@/src/io/import/dataSource';
+import { DataSource, FileDataSource } from '@/src/io/import/dataSource';
 import handleDicomFile from '@/src/io/import/processors/handleDicomFile';
 import downloadUrl from '@/src/io/import/processors/downloadUrl';
 import extractArchive from '@/src/io/import/processors/extractArchive';
@@ -88,9 +88,7 @@ const importConfigs = async (
   }
 };
 
-const importDicomFiles = async (
-  dicomDataSources: Array<DataSourceWithFile>
-) => {
+const importDicomFiles = async (dicomDataSources: Array<FileDataSource>) => {
   const resultSources: DataSource = {
     dicomSrc: {
       sources: dicomDataSources,
@@ -129,7 +127,7 @@ const importDicomFiles = async (
 export async function importDataSources(dataSources: DataSource[]) {
   const importContext = {
     fetchFileCache: new Map<string, File>(),
-    dicomDataSources: [] as DataSourceWithFile[],
+    dicomDataSources: [] as FileDataSource[],
   };
 
   const middleware = [

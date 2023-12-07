@@ -62,7 +62,10 @@ export interface DataSource {
   parent?: DataSource;
 }
 
-export type DataSourceWithFile = DataSource & { fileSrc: FileSource };
+/**
+ * A data source that has a File.
+ */
+export type FileDataSource = PartialWithRequired<DataSource, 'fileSrc'>;
 
 /**
  * Creates a DataSource from a single file.
