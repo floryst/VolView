@@ -46,11 +46,15 @@ export class DicomMetaLoader implements MetaLoader {
         signal: this.abortController.signal,
       });
     } catch (err) {
-      if (err !== DoneSignal) throw err;
+      if (err !== DoneSignal) {
+        this.abortController = null;
+        throw err;
+      }
     }
 
     const metadataFile = new File(this.fetcher.dataChunks, 'file.dcm');
     this.tags = await this.readDicomTags(metadataFile);
+    this.abortController = null;
   }
 
   stop() {
