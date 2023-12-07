@@ -11,10 +11,15 @@ export interface FetchCache<T> extends Map<string, Awaitable<T>> {}
 export interface FetchOptions<T> {
   progress?: ProgressCallback;
   cache?: FetchCache<T>;
+  fetchInit?: RequestInit;
 }
 
 interface URLHandler {
   testURL(url: string): boolean;
+  fetchResponse(
+    url: string,
+    options?: FetchOptions<unknown>
+  ): Promise<Response>;
   fetchURL(url: string, options?: FetchOptions<unknown>): Promise<Blob | null>;
 }
 
@@ -28,13 +33,16 @@ const HTTPHandler: URLHandler = {
     const { protocol } = parseUrl(url, window.location.href);
     return protocol === 'http:' || protocol === 'https:';
   },
+  fetchResponse: (url, options = {}) => {
+    return fetch(url, options?.fetchInit);
+  },
   fetchURL: async (url, options = {}) => {
     const { progress } = options;
 
     const response = await fetch(url);
-    if (response.status !== 200) {
+    if (Math.floor(response.status / 100) !== 2) {
       throw new Error(
-        `Fetching resource failed (HTTP code ${response.status})`
+        `Fetching resource failed (non-2XX HTTP code ${response.status})`
       );
     }
 
@@ -75,6 +83,21 @@ const HANDLERS = [HTTPHandler];
 
 export function canFetchUrl(url: string) {
   return !!HANDLERS.find((h) => h.testURL(url));
+}
+
+/**
+ * Retrieves a Response object for a given URL.
+ * @param url
+ * @param options
+ * @returns
+ */
+export function fetchResponse(url: string, options?: FetchOptions<unknown>) {
+  const handler = HANDLERS.find((h) => h.testURL(url));
+  if (!handler) {
+    throw new Error(`Cannot find a handler for URL: ${url}`);
+  }
+
+  return handler.fetchResponse(url, options);
 }
 
 /**
