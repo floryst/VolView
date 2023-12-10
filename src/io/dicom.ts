@@ -267,3 +267,27 @@ export class DICOMIO {
     return result.outputImage;
   }
 }
+
+let currentDicomIO: DICOMIO | null = null;
+
+/**
+ * Gets the current active DICOM IO module.
+ *
+ * Creates and initializes one if it doesn't exist.
+ * @returns
+ */
+export function getCurrentDicomIO() {
+  if (!currentDicomIO) {
+    currentDicomIO = new DICOMIO();
+    currentDicomIO.initialize();
+  }
+  return currentDicomIO;
+}
+
+/**
+ * Sets the current DICOM IO.
+ * @param io
+ */
+export function setCurrentDicomIO(io: DICOMIO | null) {
+  currentDicomIO = io;
+}

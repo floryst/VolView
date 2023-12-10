@@ -7,7 +7,7 @@ import { useImageStore } from './datasets-images';
 import { useFileStore } from './datasets-files';
 import { StateFile, DatasetType } from '../io/state-file/schema';
 import { serializeData } from '../io/state-file/utils';
-import { DICOMIO } from '../io/dicom';
+import { DICOMIO, getCurrentDicomIO } from '../io/dicom';
 
 export const ANONYMOUS_PATIENT = 'Anonymous';
 export const ANONYMOUS_PATIENT_ID = 'ANONYMOUS';
@@ -135,7 +135,7 @@ export const useDICOMStore = defineStore('dicom', {
     async importFiles(datasets: FileDataSource[]) {
       if (!datasets.length) return [];
 
-      const dicomIO = this.$dicomIO;
+      const dicomIO = getCurrentDicomIO();
 
       const fileToDataSource = new Map(
         datasets.map((ds) => [ds.fileSrc.file, ds])
@@ -312,7 +312,7 @@ export const useDICOMStore = defineStore('dicom', {
       sliceIndex: number,
       asThumbnail = false
     ) {
-      const dicomIO = this.$dicomIO;
+      const dicomIO = getCurrentDicomIO();
       const fileStore = useFileStore();
 
       const cacheKey = imageCacheMultiKey(sliceIndex, asThumbnail);
@@ -356,7 +356,7 @@ export const useDICOMStore = defineStore('dicom', {
 
     async buildVolume(volumeKey: string, forceRebuild: boolean = false) {
       const imageStore = useImageStore();
-      const dicomIO = this.$dicomIO;
+      const dicomIO = getCurrentDicomIO();
 
       const rebuild = forceRebuild || this.needsRebuild[volumeKey];
 

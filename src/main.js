@@ -15,7 +15,6 @@ import vtkImageMapper from '@kitware/vtk.js/Rendering/Core/ImageMapper';
 
 import App from './components/App.vue';
 import vuetify from './plugins/vuetify';
-import { DICOMIO } from './io/dicom';
 import { FILE_READERS } from './io';
 import { registerAllReaders } from './io/readers';
 import proxyConfiguration from './vtk/proxy';
@@ -41,14 +40,10 @@ registerAllReaders(FILE_READERS);
 
 const proxyManager = vtkProxyManager.newInstance({ proxyConfiguration });
 
-const dicomIO = new DICOMIO();
-dicomIO.initialize();
-
 const pinia = createPinia();
 pinia.use(
   CorePiniaProviderPlugin({
     proxies: new ProxyWrapper(proxyManager),
-    dicomIO,
   })
 );
 pinia.use(StoreRegistry);
