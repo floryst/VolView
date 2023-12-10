@@ -1,5 +1,6 @@
 #include <cerrno>
 #include <cstdio>
+#include <cstdlib>
 #include <dirent.h>
 #include <fstream>
 #include <iostream>
@@ -50,13 +51,10 @@ namespace fs = std::experimental::filesystem;
 using json = nlohmann::json;
 using ImageType = itk::Image<float, 3>;
 using ReaderType = itk::ImageFileReader<ImageType>;
-using SeriesReaderType = itk::ImageSeriesReader<ImageType>;
 using FileNamesContainer = std::vector<std::string>;
 using DicomIO = itk::GDCMImageIO;
 // volumeID -> filenames[]
 using VolumeMapType = std::unordered_map<std::string, std::vector<std::string>>;
-// VolumeID[]
-using VolumeIDList = std::vector<std::string>;
 
 static const double EPSILON = 10e-5;
 
@@ -67,118 +65,28 @@ extern "C" const char *EMSCRIPTEN_KEEPALIVE unpack_error_what(intptr_t ptr) {
 }
 #endif
 
-void replaceChars(std::string &str, char search, char replaceChar) {
-  int pos;
-  std::string replace(1, replaceChar);
-  while ((pos = str.find(search)) != std::string::npos) {
-    str.replace(pos, 1, replace);
-  }
-}
-
-// doesn't actually do any length checks, or overflow checks, or anything
-// really.
-template <int N>
-double dotProduct(const std::vector<double> &vec1,
-                  const std::vector<double> &vec2) {
-  double result = 0;
-  for (int i = 0; i < N; i++) {
-    result += vec1.at(i) * vec2.at(i);
-  }
-  return result;
-}
-
-std::vector<double> ReadImageOrientationValue(const std::string &filename) {
-  gdcm::Reader reader;
-  reader.SetFileName(filename.c_str());
-  if (!reader.Read()) {
-    throw std::runtime_error("gdcm: failed to read file");
-  }
-  const gdcm::File &file = reader.GetFile();
-  // This helper method asserts that the vector has length 6.
-  return gdcm::ImageHelper::GetDirectionCosinesValue(file);
-}
-
-bool areCosinesAlmostEqual(std::vector<double> cosines1,
-                           std::vector<double> cosines2,
-                           double epsilon = EPSILON) {
-  for (int i = 0; i <= 1; i++) {
-    std::vector<double> vec1{cosines1.at(i), cosines1.at(i + 1),
-                             cosines1.at(i + 2)};
-    std::vector<double> vec2{cosines2.at(i), cosines2.at(i + 1),
-                             cosines2.at(i + 2)};
-    double dot = dotProduct<3>(vec1, vec2);
-    if (dot < (1 - EPSILON)) {
-      return false;
-    }
-  }
-  return true;
-}
-
-VolumeMapType SeparateOnImageOrientation(const VolumeMapType &volumeMap) {
-  VolumeMapType newVolumeMap;
-  // Vector< Pair< cosines, volumeID >>
-  std::vector<std::pair<std::vector<double>, std::string>> cosinesToID;
-
-  // append unique ID part to the volume ID, based on cosines
-  // The format replaces non-alphanumeric chars to be semi-consistent with DICOM
-  // UID spec,
-  //   and to make debugging easier when looking at the full volume IDs.
-  // Format: COSINE || "S" || COSINE || "S" || ...
-  //   COSINE: A decimal number -DD.DDDD gets reformatted into NDDSDDDD
-  auto encodeCosinesAsIDPart = [](const std::vector<double> &cosines) {
-    std::string concatenated;
-    for (auto it = cosines.begin(); it != cosines.end(); ++it) {
-      concatenated += std::to_string(*it);
-      if (it != cosines.end() - 1) {
-        concatenated += 'S';
-      }
-    }
-
-    replaceChars(concatenated, '-', 'N');
-    replaceChars(concatenated, '.', 'D');
-
-    return concatenated;
-  };
-
-  for (const auto &[volumeID, names] : volumeMap) {
-    for (const auto &filename : names) {
-      std::vector<double> curCosines = ReadImageOrientationValue(filename);
-
-      bool inserted = false;
-      for (const auto &entry : cosinesToID) {
-        if (areCosinesAlmostEqual(curCosines, entry.first)) {
-          newVolumeMap[entry.second].push_back(filename);
-          inserted = true;
-          break;
-        }
-      }
-
-      if (!inserted) {
-        const auto encodedIDPart = encodeCosinesAsIDPart(curCosines);
-        auto newID = volumeID + '.' + encodedIDPart;
-        newVolumeMap[newID].push_back(filename);
-        cosinesToID.push_back(std::make_pair(curCosines, newID));
-      }
-    }
-  }
-
-  return newVolumeMap;
-}
-
 /**
- * categorizeFiles extracts out the volumes contained within a set of DICOM
- * files.
+ * @brief Splits and sorts DICOM files into reconstructable volumes.
  *
- * Return a mapping of volume ID to the files containing the volume.
+ * @param pipeline
+ * @return int
  */
-int categorizeFiles(itk::wasm::Pipeline &pipeline) {
-
+int splitAndSortDicomFiles(itk::wasm::Pipeline &pipeline) {
   // inputs
   FileNamesContainer files;
-  pipeline.add_option("-f,--files", files, "File names to categorize")
+  pipeline
+      .add_option("-f,--files", files,
+                  "File names to categorize. Must be all unique.")
       ->required()
       ->check(CLI::ExistingFile)
       ->expected(1, -1);
+
+  // std::vector<std::string> restrictions;
+  // pipeline
+  //     .add_option("-r,--restrictions", restrictions,
+  //                 "Extra DICOM restrictions. GGGG|EEEE format, in
+  //                 hexadecimal.")
+  //     ->expected(0, -1);
 
   // outputs
   itk::wasm::OutputTextStream volumeMapJSONStream;
@@ -199,21 +107,20 @@ int categorizeFiles(itk::wasm::Pipeline &pipeline) {
   seriesFileNames->SetUseSeriesDetails(true);
   seriesFileNames->SetGlobalWarningDisplay(false);
   seriesFileNames->AddSeriesRestriction("0008|0021");
+  // for (auto &restriction : restrictions) {
+  //   seriesFileNames->AddSeriesRestriction(restriction);
+  // }
   seriesFileNames->SetRecursive(false);
   // Does this affect series organization?
   seriesFileNames->SetLoadPrivateTags(false);
 
-  // Obtain the initial separation of imported files into distinct volumes.
+  // Obtain the separation of imported files into distinct volumes.
   auto &gdcmSeriesUIDs = seriesFileNames->GetSeriesUIDs();
 
-  // The initial series UIDs are used as the basis for our volume IDs.
   VolumeMapType volumeMap;
   for (auto seriesUID : gdcmSeriesUIDs) {
     volumeMap[seriesUID] = seriesFileNames->GetFileNames(seriesUID.c_str());
   }
-
-  // further restrict on orientation
-  volumeMap = SeparateOnImageOrientation(volumeMap);
 
   // strip off tmp prefix
   for (auto &entry : volumeMap) {
@@ -306,17 +213,17 @@ int getSliceImage(itk::wasm::Pipeline &pipeline) {
 
 int main(int argc, char *argv[]) {
   std::string action;
-  itk::wasm::Pipeline pipeline("DICOM-VolView", "VolView pipeline to access DICOM data", argc,
-                               argv);
+  itk::wasm::Pipeline pipeline(
+      "DICOM-VolView", "VolView pipeline to access DICOM data", argc, argv);
   pipeline.add_option("-a,--action", action, "The action to run")
       ->check(CLI::IsMember({"categorize", "getSliceImage"}));
 
   // Pre parse so we can get the action
   ITK_WASM_PRE_PARSE(pipeline)
 
-  if (action == "categorize") {
+  if (action == "splitAndSort") {
 
-    ITK_WASM_CATCH_EXCEPTION(pipeline, categorizeFiles(pipeline));
+    ITK_WASM_CATCH_EXCEPTION(pipeline, splitAndSortDicomFiles(pipeline));
 
   } else if (action == "getSliceImage") {
 
