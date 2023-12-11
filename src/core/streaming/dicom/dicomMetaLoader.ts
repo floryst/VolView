@@ -1,5 +1,6 @@
 import { createDicomParser } from '@/src/core/streaming/dicom/dicomParser';
 import { Fetcher, MetaLoader } from '@/src/core/streaming/types';
+import { FILE_EXT_TO_MIME } from '@/src/io/mimeTypes';
 import { Maybe } from '@/src/types';
 import { Awaitable } from '@vueuse/core';
 
@@ -10,8 +11,7 @@ export type ReadDicomTagsFunction = (
 ) => Awaitable<Array<[string, string]>>;
 
 export class DicomMetaLoader implements MetaLoader {
-  public tags: Maybe<Array<[string, string]>>;
-
+  private tags: Maybe<Array<[string, string]>>;
   private abortController: Maybe<AbortController>;
 
   constructor(
@@ -19,6 +19,14 @@ export class DicomMetaLoader implements MetaLoader {
     private readDicomTags: ReadDicomTagsFunction
   ) {
     this.abortController = null;
+  }
+
+  get meta() {
+    return this.tags;
+  }
+
+  get metaBlob() {
+    return new Blob(this.fetcher.dataChunks, { type: FILE_EXT_TO_MIME.dcm });
   }
 
   async load() {

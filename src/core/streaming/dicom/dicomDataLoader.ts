@@ -20,7 +20,7 @@ export class DicomDataLoader implements DataLoader {
     });
 
     try {
-      // consume the rest of the stream
+      // consume the rest of the stream in order to cache the chunks
       await stream.pipeTo(new WritableStream());
       this.data = new Blob(this.fetcher.dataChunks, {
         type: FILE_EXT_TO_MIME.dcm,

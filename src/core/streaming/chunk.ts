@@ -5,7 +5,6 @@ import {
   TransitionEvent,
 } from '@/src/core/streaming/chunkStateMachine';
 import { DataLoader, MetaLoader } from '@/src/core/streaming/types';
-import { Maybe } from '@/src/types';
 import mitt, { Emitter } from 'mitt';
 
 type ChunkEvents = {
@@ -18,8 +17,6 @@ interface ChunkEventData {
   error?: Error;
 }
 
-export type ChunkMetadata = Record<string, string>;
-
 interface ChunkInit {
   metaLoader: MetaLoader;
   dataLoader: DataLoader;
@@ -29,8 +26,6 @@ interface ChunkInit {
  * Represents a data chunk.
  */
 export class Chunk {
-  private meta: Maybe<Array<[string, string]>>;
-
   private machine: ChunkStateMachine;
   private metaLoader: MetaLoader;
   private dataLoader: DataLoader;
@@ -56,7 +51,15 @@ export class Chunk {
   }
 
   get metadata() {
-    return this.meta;
+    return this.metaLoader.meta;
+  }
+
+  get metaBlob() {
+    return this.metaLoader.metaBlob;
+  }
+
+  get data() {
+    return this.dataLoader.data;
   }
 
   loadMeta() {

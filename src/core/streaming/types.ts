@@ -1,3 +1,4 @@
+import { Maybe } from '@/src/types';
 import { Awaitable } from '@vueuse/core';
 
 export type LoaderEvents = {
@@ -13,12 +14,17 @@ interface Loader {
 /**
  * A metadata loader.
  */
-export type MetaLoader = Loader;
+export interface MetaLoader extends Loader {
+  meta: Maybe<Array<[string, string]>>;
+  metaBlob: Maybe<Blob>;
+}
 
 /**
  * A data loader.
  */
-export type DataLoader = Loader;
+export interface DataLoader extends Loader {
+  data: Maybe<Blob>;
+}
 
 /**
  * Init options for a Fetcher.
