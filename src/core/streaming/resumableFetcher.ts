@@ -12,6 +12,7 @@ type FetchFunction = typeof fetch;
 
 export interface ResumableRequestInit extends RequestInit {
   prefixChunks?: Uint8Array[];
+  contentLength?: number;
   fetch?: FetchFunction;
 }
 
@@ -31,6 +32,7 @@ export class ResumableFetcher implements Fetcher {
   private fetch: typeof fetch;
   private finished: boolean;
   private chunks: Uint8Array[];
+  private contentLength: number | null = null;
 
   constructor(
     private request: RequestInfo | URL,
@@ -38,6 +40,7 @@ export class ResumableFetcher implements Fetcher {
   ) {
     this.finished = false;
     this.chunks = [...(init?.prefixChunks ?? [])];
+    this.contentLength = init?.contentLength ?? null;
     this.fetch = init?.fetch ?? globalThis.fetch;
   }
 
@@ -70,6 +73,10 @@ export class ResumableFetcher implements Fetcher {
       this.clearAbortController
     );
 
+    if (this.size === this.contentLength) {
+      return this.getDataChunksAsStream();
+    }
+
     // Use fromEntries as a workaround to handle
     // jsdom not setting Range properly.
     const headers = Object.fromEntries(new Headers(this.init?.headers ?? {}));
@@ -82,6 +89,10 @@ export class ResumableFetcher implements Fetcher {
       headers,
       signal: this.abortController.signal,
     });
+
+    if (this.size === 0 && response.headers.has('content-length')) {
+      this.contentLength = Number(response.headers.get('content-length')!);
+    }
 
     if (!response.body) throw new Error('Did not receive a response body');
 

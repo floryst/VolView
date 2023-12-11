@@ -24,6 +24,10 @@ export function concatStreams<T>(
           streams.shift();
           reader = null;
         }
+
+        // ensure the controller is properly closed in the event
+        // nothing is enqueued and there are no more streams
+        if (streams.length === 0) controller.close();
       });
     },
   });
