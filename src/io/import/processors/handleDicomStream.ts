@@ -4,12 +4,12 @@ import {
   DicomMetaLoader,
   ReadDicomTagsFunction,
 } from '@/src/core/streaming/dicom/dicomMetaLoader';
+import { getRequestPool } from '@/src/core/streaming/requestPool';
 import { ResumableFetcher } from '@/src/core/streaming/resumableFetcher';
 import { ImportHandler } from '@/src/io/import/common';
+import { getWorker } from '@/src/io/itk/worker';
 import { FILE_EXT_TO_MIME } from '@/src/io/mimeTypes';
 import { readDicomTags } from '@itk-wasm/dicom';
-
-let worker: Worker | null = null;
 
 const handleDicomStream: ImportHandler = async (dataSource, { done }) => {
   const { fileSrc, uriSrc } = dataSource;
@@ -17,13 +17,14 @@ const handleDicomStream: ImportHandler = async (dataSource, { done }) => {
     return dataSource;
   }
 
-  const fetcher = new ResumableFetcher(uriSrc.uri, {
-    prefixChunks: uriSrc.bytes,
-    fetch: (...args) => fetch(...args),
-  });
+  const fetcher =
+    uriSrc.fetcher ??
+    new ResumableFetcher(uriSrc.uri, {
+      fetch: (...args) => getRequestPool().fetch(...args),
+    });
+  // TODO move this to a separate file?
   const readTags: ReadDicomTagsFunction = async (file) => {
-    const result = await readDicomTags(worker, file);
-    worker = result.webWorker;
+    const result = await readDicomTags(getWorker(), file);
     return result.tags;
   };
 
