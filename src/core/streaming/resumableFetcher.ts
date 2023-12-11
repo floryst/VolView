@@ -1,6 +1,8 @@
+import { concatStreams } from '@/src/core/streaming/concatStreams';
 import {
   HTTP_STATUS_OK,
   HTTP_STATUS_PARTIAL_CONTENT,
+  HTTP_STATUS_REQUESTED_RANGE_NOT_SATISFIABLE,
   HttpNotFound,
 } from '@/src/core/streaming/httpCodes';
 import { Fetcher, FetcherInit } from '@/src/core/streaming/types';
@@ -71,7 +73,9 @@ export class ResumableFetcher implements Fetcher {
     // Use fromEntries as a workaround to handle
     // jsdom not setting Range properly.
     const headers = Object.fromEntries(new Headers(this.init?.headers ?? {}));
-    headers.Range = `bytes=${this.size}-`;
+    if (this.size > 0) {
+      headers.Range = `bytes=${this.size}-`;
+    }
 
     const response = await this.fetch(new Request(this.request), {
       ...this.init,
@@ -81,25 +85,28 @@ export class ResumableFetcher implements Fetcher {
 
     if (!response.body) throw new Error('Did not receive a response body');
 
+    const noMoreContent = response.headers.get('content-length') === '0';
+    const rangeNotSatisfiable =
+      response.status === HTTP_STATUS_REQUESTED_RANGE_NOT_SATISFIABLE;
+
+    if (rangeNotSatisfiable && !noMoreContent) {
+      throw new Error('Range could not be satisfied');
+    }
+
     if (
+      !noMoreContent &&
       response.status !== HTTP_STATUS_OK &&
       response.status !== HTTP_STATUS_PARTIAL_CONTENT
     ) {
       throw new HttpNotFound();
     }
 
-    if (response.status !== HTTP_STATUS_PARTIAL_CONTENT) {
+    if (!noMoreContent && response.status !== HTTP_STATUS_PARTIAL_CONTENT) {
       this.chunks = [];
     }
 
-    const initialChunks = [...this.chunks];
-
-    const transformStream = new TransformStream({
+    const cacheChunkStream = new TransformStream({
       transform: (chunk, controller) => {
-        // send initial chunks
-        while (initialChunks.length) {
-          controller.enqueue(initialChunks.shift()!);
-        }
         this.chunks.push(chunk);
         controller.enqueue(chunk);
       },
@@ -109,7 +116,10 @@ export class ResumableFetcher implements Fetcher {
       },
     });
 
-    return response.body.pipeThrough(transformStream);
+    return concatStreams(
+      this.getDataChunksAsStream(),
+      response.body.pipeThrough(cacheChunkStream)
+    );
   }
 
   stop() {
@@ -121,4 +131,17 @@ export class ResumableFetcher implements Fetcher {
   private clearAbortController = () => {
     this.abortController = null;
   };
+
+  private getDataChunksAsStream() {
+    const chunks = [...this.chunks];
+    return new ReadableStream({
+      pull(controller) {
+        if (chunks.length) {
+          controller.enqueue(chunks.shift());
+        } else {
+          controller.close();
+        }
+      },
+    });
+  }
 }
