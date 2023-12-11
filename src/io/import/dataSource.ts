@@ -1,4 +1,5 @@
 import { Chunk } from '@/src/core/streaming/chunk';
+import { Fetcher } from '@/src/core/streaming/types';
 import { Maybe, PartialWithRequired } from '@/src/types';
 
 /**
@@ -11,7 +12,7 @@ export interface UriSource {
   uri: string;
   name: string;
   mime?: string;
-  bytes?: Uint8Array[];
+  fetcher?: Fetcher;
 }
 
 /**
@@ -184,7 +185,13 @@ export function getDataSourceName(ds: Maybe<DataSource>): Maybe<string> {
  */
 export function serializeDataSource(ds: DataSource) {
   const output = { ...ds };
+
+  if (output.uriSrc) {
+    delete output.uriSrc.fetcher;
+  }
+
   delete output.fileSrc;
+
   if (output.parent) {
     output.parent = serializeDataSource(output.parent);
   }

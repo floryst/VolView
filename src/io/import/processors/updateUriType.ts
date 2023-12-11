@@ -1,17 +1,15 @@
+import { getRequestPool } from '@/src/core/streaming/requestPool';
+import { ResumableFetcher } from '@/src/core/streaming/resumableFetcher';
 import StreamingByteReader from '@/src/core/streaming/streamingByteReader';
 import { ImportHandler } from '@/src/io/import/common';
 import { getFileMimeFromMagicStream } from '@/src/io/magic';
-import { Maybe } from '@/src/types';
 import { asCoroutine } from '@/src/utils';
-import { canFetchUrl, fetchResponse } from '@/src/utils/fetch';
+import { canFetchUrl } from '@/src/utils/fetch';
 
-type TypeDetectionResult = {
-  mime: Maybe<string>;
-  chunks: Uint8Array[];
-};
+const DoneSignal = Symbol('DoneSignal');
 
 function detectStreamType(stream: ReadableStream) {
-  return new Promise<TypeDetectionResult>((resolve, reject) => {
+  return new Promise<string>((resolve, reject) => {
     const reader = new StreamingByteReader();
     const consume = asCoroutine(getFileMimeFromMagicStream(reader));
     const chunks: Uint8Array[] = [];
@@ -22,14 +20,17 @@ function detectStreamType(stream: ReadableStream) {
         const result = consume(chunk);
         if (result.done) {
           const mime = result.value;
-          resolve({ mime, chunks });
-          writableStream.getWriter().releaseLock();
-          writableStream.close();
+          if (mime) resolve(mime);
+          throw DoneSignal;
         }
       },
     });
 
-    stream.pipeTo(writableStream).catch(reject);
+    stream.pipeTo(writableStream).catch((err) => {
+      if (err !== DoneSignal) {
+        reject(err);
+      }
+    });
   });
 }
 
@@ -39,12 +40,20 @@ const updateUriType: ImportHandler = async (dataSource) => {
     return dataSource;
   }
 
-  const response = await fetchResponse(uriSrc.uri);
-  if (!response.body) {
-    throw new Error('No body in the response');
-  }
+  const fetcher =
+    uriSrc.fetcher ??
+    new ResumableFetcher(uriSrc.uri, {
+      fetch: (...args) => getRequestPool().fetch(...args),
+    });
 
-  const { mime, chunks } = await detectStreamType(response.body);
+  const abortController = new AbortController();
+  const stream = await fetcher.start({
+    abortController,
+  });
+  const mime = await detectStreamType(stream);
+
+  // properly close the stream
+  abortController.abort();
 
   if (!mime) {
     throw new Error('No mimetype detected in the stream');
@@ -55,7 +64,7 @@ const updateUriType: ImportHandler = async (dataSource) => {
     uriSrc: {
       ...uriSrc,
       mime,
-      bytes: chunks,
+      fetcher,
     },
   };
 
