@@ -30,52 +30,43 @@ export const StopSignal = Symbol('StopSignal');
 export class ResumableFetcher implements Fetcher {
   private abortController: Maybe<AbortController>;
   private fetch: typeof fetch;
-  private finished: boolean;
   private chunks: Uint8Array[];
   private contentLength: number | null = null;
+  private activeNetworkStream: ReadableStream<Uint8Array> | null = null;
 
   constructor(
     private request: RequestInfo | URL,
     private init?: ResumableRequestInit
   ) {
-    this.finished = false;
     this.chunks = [...(init?.prefixChunks ?? [])];
     this.contentLength = init?.contentLength ?? null;
     this.fetch = init?.fetch ?? globalThis.fetch;
   }
 
-  get running() {
+  get connected() {
     return !!this.abortController;
-  }
-
-  get done() {
-    return this.finished;
   }
 
   get size() {
     return this.chunks.reduce((sum, chunk) => sum + chunk.length, 0);
   }
 
-  get dataChunks() {
+  get cachedChunks() {
     return this.chunks;
   }
 
-  /**
-   * Starts a fetch and returns a ReadableStream.
-   * @returns
-   */
-  async start(init?: FetcherInit) {
-    if (this.running) throw new Error('Already started');
+  get abortSignal() {
+    return this.abortController?.signal;
+  }
+
+  async connect(init?: FetcherInit) {
+    if (this.connected) return;
 
     this.abortController = init?.abortController ?? new AbortController();
-    this.abortController.signal.addEventListener(
-      'abort',
-      this.clearAbortController
-    );
+    this.abortController.signal.addEventListener('abort', () => this.cleanup());
 
-    if (this.size === this.contentLength) {
-      return this.getDataChunksAsStream();
-    }
+    // do not actually send the request, since we've cached the entire response
+    if (this.size === this.contentLength) return;
 
     // Use fromEntries as a workaround to handle
     // jsdom not setting Range properly.
@@ -116,43 +107,56 @@ export class ResumableFetcher implements Fetcher {
       this.chunks = [];
     }
 
-    const cacheChunkStream = new TransformStream({
-      transform: (chunk, controller) => {
-        this.chunks.push(chunk);
-        controller.enqueue(chunk);
-      },
-      flush: () => {
-        this.finished = true;
-        this.clearAbortController();
-      },
-    });
-
-    return concatStreams(
-      this.getDataChunksAsStream(),
-      response.body.pipeThrough(cacheChunkStream)
-    );
+    this.activeNetworkStream = this.wrapNetworkStream(response.body);
   }
 
-  stop() {
+  close() {
     if (!this.abortController) return;
     this.abortController.abort(StopSignal);
-    this.clearAbortController();
+    this.cleanup();
   }
 
-  private clearAbortController = () => {
+  getStream() {
+    return concatStreams(this.getDataChunksAsStream(), this.getNetworkStream());
+  }
+
+  private cleanup() {
+    this.activeNetworkStream = null;
     this.abortController = null;
-  };
+  }
 
   private getDataChunksAsStream() {
-    const chunks = [...this.chunks];
+    let i = 0;
+    const self = this;
     return new ReadableStream({
       pull(controller) {
-        if (chunks.length) {
-          controller.enqueue(chunks.shift());
+        if (i < self.chunks.length) {
+          controller.enqueue(self.chunks[i]);
+          i += 1;
         } else {
           controller.close();
         }
       },
     });
+  }
+
+  private wrapNetworkStream(stream: ReadableStream<Uint8Array>) {
+    const cacheChunkStream = new TransformStream({
+      transform: (chunk, controller) => {
+        this.chunks.push(chunk);
+        controller.enqueue(chunk);
+      },
+    });
+
+    return stream.pipeThrough(cacheChunkStream);
+  }
+
+  private getNetworkStream() {
+    if (!this.activeNetworkStream) {
+      return new ReadableStream();
+    }
+    const [s1, s2] = this.activeNetworkStream.tee();
+    this.activeNetworkStream = s2;
+    return s1;
   }
 }

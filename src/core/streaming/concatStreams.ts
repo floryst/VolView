@@ -8,27 +8,30 @@ export function concatStreams<T>(
 ): ReadableStream<T> {
   let reader: ReadableStreamDefaultReader<T> | null = null;
   return new ReadableStream({
-    pull(controller) {
-      if (streams.length === 0) {
-        controller.close();
-        return Promise.resolve();
-      }
+    async pull(controller) {
+      let enqueued = false;
+      while (!enqueued && streams.length) {
+        if (!reader) {
+          reader = streams[0].getReader();
+        }
 
-      if (!reader) {
-        reader = streams[0].getReader();
-      }
+        // eslint-disable-next-line no-await-in-loop
+        const result = await reader.read();
 
-      return reader.read().then((result) => {
-        if (result.value) controller.enqueue(result.value);
+        if (result.value) {
+          controller.enqueue(result.value);
+          enqueued = true;
+        }
+
         if (result.done) {
           streams.shift();
           reader = null;
         }
+      }
 
-        // ensure the controller is properly closed in the event
-        // nothing is enqueued and there are no more streams
-        if (streams.length === 0) controller.close();
-      });
+      if (streams.length === 0) {
+        controller.close();
+      }
     },
   });
 }

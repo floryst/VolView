@@ -1,10 +1,9 @@
 import { createDicomParser } from '@/src/core/streaming/dicom/dicomParser';
+import { StopSignal } from '@/src/core/streaming/resumableFetcher';
 import { Fetcher, MetaLoader } from '@/src/core/streaming/types';
 import { FILE_EXT_TO_MIME } from '@/src/io/mimeTypes';
 import { Maybe } from '@/src/types';
 import { Awaitable } from '@vueuse/core';
-
-const DoneSignal = Symbol('DoneSignal');
 
 export type ReadDicomTagsFunction = (
   file: File
@@ -12,13 +11,12 @@ export type ReadDicomTagsFunction = (
 
 export class DicomMetaLoader implements MetaLoader {
   private tags: Maybe<Array<[string, string]>>;
-  private abortController: Maybe<AbortController>;
+  private fetcher: Fetcher;
+  private readDicomTags: ReadDicomTagsFunction;
 
-  constructor(
-    private fetcher: Fetcher,
-    private readDicomTags: ReadDicomTagsFunction
-  ) {
-    this.abortController = null;
+  constructor(fetcher: Fetcher, readDicomTags: ReadDicomTagsFunction) {
+    this.fetcher = fetcher;
+    this.readDicomTags = readDicomTags;
   }
 
   get meta() {
@@ -26,17 +24,14 @@ export class DicomMetaLoader implements MetaLoader {
   }
 
   get metaBlob() {
-    return new Blob(this.fetcher.dataChunks, { type: FILE_EXT_TO_MIME.dcm });
+    return new Blob(this.fetcher.cachedChunks, { type: FILE_EXT_TO_MIME.dcm });
   }
 
   async load() {
     if (this.tags) return;
-    if (this.abortController) throw new Error('Loader already started');
 
-    this.abortController = new AbortController();
-    const stream = await this.fetcher.start({
-      abortController: this.abortController,
-    });
+    await this.fetcher.connect();
+    const stream = this.fetcher.getStream();
 
     const parse = createDicomParser(12);
 
@@ -44,31 +39,28 @@ export class DicomMetaLoader implements MetaLoader {
       write: (chunk) => {
         const result = parse(chunk);
         if (result.done) {
-          this.abortController?.abort(DoneSignal);
+          this.fetcher.close();
         }
       },
     });
 
     try {
       await stream.pipeTo(sinkStream, {
-        signal: this.abortController.signal,
+        // ensure we use the fetcher's abort signal,
+        // otherwise a DOMException will be propagated
+        signal: this.fetcher.abortSignal,
       });
     } catch (err) {
-      if (err !== DoneSignal) {
-        this.abortController = null;
+      if (err !== StopSignal) {
         throw err;
       }
     }
 
-    const metadataFile = new File(this.fetcher.dataChunks, 'file.dcm');
+    const metadataFile = new File(this.fetcher.cachedChunks, 'file.dcm');
     this.tags = await this.readDicomTags(metadataFile);
-    this.abortController = null;
   }
 
   stop() {
-    if (!this.abortController) return;
-
-    this.abortController.abort();
-    this.abortController = null;
+    this.fetcher.close();
   }
 }

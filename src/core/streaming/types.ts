@@ -34,13 +34,14 @@ export interface FetcherInit {
 }
 
 /**
- * A generic stoppable fetcher.
+ * A fetcher that caches an incoming stream.
  */
 export interface Fetcher {
-  start(init?: FetcherInit): Promise<ReadableStream>;
-  stop(): void;
-  dataChunks: Uint8Array[];
-  running: boolean;
-  done: boolean;
+  connect(): Promise<void>;
+  getStream(): ReadableStream<Uint8Array>;
+  close(): void;
+  cachedChunks: Uint8Array[];
+  connected: boolean;
   size: number;
+  abortSignal?: AbortSignal;
 }
