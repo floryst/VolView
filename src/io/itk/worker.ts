@@ -23,7 +23,6 @@ export function getWorker() {
 
 export async function initWorker() {
   await ensureWorker();
-  console.log('>> init');
   try {
     await readDicomTags(webWorker, new File([], 'a.dcm'));
   } catch (err) {
@@ -34,5 +33,4 @@ export async function initWorker() {
   } catch (err) {
     // ignore
   }
-  console.log('<< init');
 }
