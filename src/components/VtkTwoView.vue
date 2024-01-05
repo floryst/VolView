@@ -207,6 +207,7 @@ import BoundingRectangle from '@/src/components/tools/BoundingRectangle.vue';
 import { useToolSelectionStore } from '@/src/store/tools/toolSelection';
 import { useAnnotationToolStore } from '@/src/store/tools';
 import { doesToolFrameMatchViewAxis } from '@/src/composables/annotationTool';
+import { onVTKEvent } from '@/src/composables/onVTKEvent';
 import type { TypedArray } from '@kitware/vtk.js/types';
 import { useResizeObserver } from '../composables/useResizeObserver';
 import { useOrientationLabels } from '../composables/useOrientationLabels';
@@ -589,6 +590,11 @@ export default defineComponent({
       baseImage: curImageID,
       labelmaps: segmentGroupIDs,
       layers: layerIDs,
+    });
+
+    onVTKEvent(curImageData, 'onModified', () => {
+      baseImageRep.value?.modified();
+      viewProxy.value.renderLater();
     });
 
     // --- camera setup --- //

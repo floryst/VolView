@@ -9,7 +9,7 @@ import {
   LoadableResult,
   isLoadableResult,
 } from '@/src/io/import/common';
-import { DataSource, FileDataSource } from '@/src/io/import/dataSource';
+import { ChunkDataSource, DataSource } from '@/src/io/import/dataSource';
 import handleDicomFile from '@/src/io/import/processors/handleDicomFile';
 import extractArchive from '@/src/io/import/processors/extractArchive';
 import extractArchiveTargetFromCache from '@/src/io/import/processors/extractArchiveTarget';
@@ -25,6 +25,8 @@ import { makeDICOMSelection, makeImageSelection } from '@/src/store/datasets';
 import { applyConfig } from '@/src/io/import/configSchema';
 import handleDicomStream from '@/src/io/import/processors/handleDicomStream';
 import updateUriType from '@/src/io/import/processors/updateUriType';
+import { FILE_EXT_TO_MIME } from '@/src/io/mimeTypes';
+import { openUriStream } from '@/src/io/import/processors/openUriStream';
 
 /**
  * Tries to turn a thrown object into a meaningful error string.
@@ -89,50 +91,40 @@ const importConfigs = async (
   }
 };
 
-const importDicomFiles = async (dicomDataSources: Array<FileDataSource>) => {
-  const resultSources: DataSource = {
-    dicomSrc: {
-      sources: dicomDataSources,
-    },
-  };
-  try {
-    if (!dicomDataSources.length) {
-      return {
-        ok: true as const,
-        data: [],
-      };
-    }
-    const volumeKeys = await useDICOMStore().importFiles(dicomDataSources);
-    return {
-      ok: true as const,
-      data: volumeKeys.map((key) => ({
-        dataID: key,
-        dataType: 'dicom' as const,
-        dataSource: resultSources,
-      })),
-    };
-  } catch (err) {
-    return {
-      ok: false as const,
-      errors: [
-        {
-          message: toMeaningfulErrorString(err),
-          cause: err,
-          inputDataStackTrace: [resultSources],
+async function importDicomChunkSources(sources: ChunkDataSource[]) {
+  // split and sort chunks
+  // insert chunk into image store via ID.
+  //   Chunk metadata should yield an ID specifier to avoid duplicate chunks.
+  //
+  const dicomStore = useDICOMStore();
+  const dataIds = await dicomStore.importChunks(
+    sources.map((src) => src.chunkSrc.chunk)
+  );
+  return {
+    ok: true as const,
+    data: dataIds.map((id) => ({
+      dataID: id,
+      dataType: 'dicom' as const,
+      dataSource: {
+        collectionSrc: {
+          sources,
         },
-      ],
-    };
-  }
-};
+      },
+    })),
+  };
+}
 
-export async function importDataSources(dataSources: DataSource[]) {
+export async function importDataSources(
+  dataSources: DataSource[]
+): Promise<PipelineResult<DataSource, ImportResult>[]> {
   const importContext = {
     fetchFileCache: new Map<string, File>(),
-    dicomDataSources: [] as FileDataSource[],
   };
 
   const middleware = [
-    // updating the file/uri type should be first in the pipeline
+    openUriStream,
+
+    // updating the file/uri type should be first step in the pipeline
     updateFileMimeType,
     updateUriType,
 
@@ -160,12 +152,25 @@ export async function importDataSources(dataSources: DataSource[]) {
     dataSources.map((r) => loader.execute(r, importContext))
   );
 
+  const successfulResults = results.filter(
+    (result): result is PipelineResultSuccess<ImportResult> => result.ok
+  );
+
+  const chunks = successfulResults
+    .flatMap((result) => result.data)
+    .map((data) => data.dataSource)
+    .filter((src): src is ChunkDataSource => !!src.chunkSrc);
+
+  const dicomChunks = chunks.filter(
+    (ch) => ch.chunkSrc.mime === FILE_EXT_TO_MIME.dcm
+  );
+
   const configResult = await importConfigs(results);
-  const dicomResult = await importDicomFiles(importContext.dicomDataSources);
+  const dicomChunkResult = await importDicomChunkSources(dicomChunks);
 
   return [
     ...results,
-    dicomResult,
+    dicomChunkResult,
     configResult,
     // Consuming code expects only errors and image import results.
     // Remove ok results that don't result in something to load (like config.JSON files)

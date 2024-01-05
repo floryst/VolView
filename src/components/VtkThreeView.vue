@@ -77,6 +77,7 @@ import type { Vector3 } from '@kitware/vtk.js/types';
 
 import { useProxyManager } from '@/src/composables/proxyManager';
 import ViewOverlayGrid from '@/src/components/ViewOverlayGrid.vue';
+import { onVTKEvent } from '@/src/composables/onVTKEvent';
 import { useResizeObserver } from '../composables/useResizeObserver';
 import { useCurrentImage } from '../composables/useCurrentImage';
 import { useCameraOrientation } from '../composables/useCameraOrientation';
@@ -602,6 +603,12 @@ export default defineComponent({
     // --- Listen to ResetViews event --- //
     const events = useResetViewsEvents();
     events.onClick(() => resetCamera());
+
+    // --
+    onVTKEvent(currentImageData, 'onModified', () => {
+      baseImageRep.value?.modified();
+      viewProxy.value.renderLater();
+    });
 
     // --- template vars --- //
 

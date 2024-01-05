@@ -1,13 +1,26 @@
 import vtkITKHelper from '@kitware/vtk.js/Common/DataModel/ITKHelper';
 import { defineStore } from 'pinia';
-import { Image } from 'itk-wasm';
+import { Image, readImageBlob } from 'itk-wasm';
 import { FileDataSource } from '@/src/io/import/dataSource';
+import { Chunk } from '@/src/core/streaming/chunk';
+import vtkImageData from '@kitware/vtk.js/Common/DataModel/ImageData';
+import { NAME_TO_TAG } from '@/src/core/dicomTags';
+import { TypedArray, Vector3 } from '@kitware/vtk.js/types';
+import { Maybe } from '@/src/types';
+import { mat3, vec3 } from 'gl-matrix';
+import vtkDataArray from '@kitware/vtk.js/Common/Core/DataArray';
 import { pick, removeFromArray } from '../utils';
 import { useImageStore } from './datasets-images';
 import { useFileStore } from './datasets-files';
 import { StateFile, DatasetType } from '../io/state-file/schema';
 import { serializeData } from '../io/state-file/utils';
-import { DICOMIO, getCurrentDicomIO } from '../io/dicom';
+import {
+  buildImage,
+  readTags,
+  readVolumeSlice,
+  splitAndSort,
+} from '@/src/io/dicom';
+import { getWorker } from '@/src/io/itk/worker';
 
 export const ANONYMOUS_PATIENT = 'Anonymous';
 export const ANONYMOUS_PATIENT_ID = 'ANONYMOUS';
@@ -79,10 +92,12 @@ interface State {
   volumeStudy: Record<string, string>;
   // studyKey -> patientKey
   studyPatient: Record<string, string>;
+
+  volumeChunks: Record<string, Chunk[]>;
 }
 
-const readDicomTags = (dicomIO: DICOMIO, file: File) =>
-  dicomIO.readTags(file, [
+const readDicomTags = (file: File) =>
+  readTags(file, [
     { name: 'PatientName', tag: '0010|0010', strconv: true },
     { name: 'PatientID', tag: '0010|0020', strconv: true },
     { name: 'PatientBirthDate', tag: '0010|0030' },
@@ -117,6 +132,106 @@ export const getDisplayName = (info: VolumeInfo) => {
   );
 };
 
+function toVec(s: Maybe<string>): number[] | null {
+  if (!s?.length) return null;
+  return s.split('\\').map((a) => Number(a)) as number[];
+}
+
+function getTypedArrayConstructor(
+  bitsAllocated: number,
+  pixelRepresentation: number
+) {
+  if (bitsAllocated % 8 !== 0)
+    throw new Error('bits allocated is not a multiple of 8!');
+  if (bitsAllocated === 0) throw new Error('bits allocated is zero!');
+
+  switch (bitsAllocated) {
+    case 8:
+      return pixelRepresentation ? Int8Array : Uint8Array;
+    case 16:
+      return pixelRepresentation ? Int16Array : Uint16Array;
+    case 32:
+      return pixelRepresentation ? Int32Array : Uint32Array;
+    default:
+      throw new Error(
+        `Cannot interpret combo of bits allocated and pixel representation: ${bitsAllocated}, ${pixelRepresentation}`
+      );
+  }
+}
+
+const ImagePositionPatientTag = NAME_TO_TAG.get('ImagePositionPatient')!;
+const ImageOrientationPatientTag = NAME_TO_TAG.get('ImageOrientationPatient')!;
+const PixelSpacingTag = NAME_TO_TAG.get('PixelSpacing')!;
+const RowsTag = NAME_TO_TAG.get('Rows')!;
+const ColumnsTag = NAME_TO_TAG.get('Columns')!;
+const BitsAllocatedTag = NAME_TO_TAG.get('BitsAllocated')!;
+const PixelRepresentationTag = NAME_TO_TAG.get('PixelRepresentation')!;
+const SamplesPerPixelTag = NAME_TO_TAG.get('SamplesPerPixel')!;
+
+function allocateImageFromChunks(sortedChunks: Chunk[]) {
+  if (sortedChunks.length === 0) {
+    throw new Error('Cannot allocate an image from zero chunks');
+  }
+
+  // use the first chunk as the source of metadata
+  const meta = new Map(sortedChunks[0].metadata!);
+  const imagePositionPatient = toVec(meta.get(ImagePositionPatientTag));
+  const imageOrientationPatient = toVec(meta.get(ImageOrientationPatientTag));
+  const pixelSpacing = toVec(meta.get(PixelSpacingTag));
+  const rows = Number(meta.get(RowsTag) ?? 0);
+  const columns = Number(meta.get(ColumnsTag) ?? 0);
+  const bitsAllocated = Number(meta.get(BitsAllocatedTag) ?? 0);
+  const pixelRepresentation = Number(meta.get(PixelRepresentationTag));
+  const samplesPerPixel = Number(meta.get(SamplesPerPixelTag) ?? 1);
+
+  const slices = sortedChunks.length;
+  const TypedArrayCtor = getTypedArrayConstructor(
+    bitsAllocated,
+    pixelRepresentation
+  );
+  const pixelData = new TypedArrayCtor(rows * columns * slices);
+
+  const image = vtkImageData.newInstance();
+  image.setExtent([0, columns - 1, 0, rows - 1, 0, slices - 1]);
+
+  if (imagePositionPatient) {
+    image.setOrigin(imagePositionPatient as Vector3);
+  }
+
+  image.setSpacing([1, 1, 1]);
+  if (slices > 1 && imagePositionPatient && pixelSpacing) {
+    const secondMeta = new Map(sortedChunks[1].metadata);
+    const secondIPP = toVec(secondMeta.get(ImagePositionPatientTag));
+    if (secondIPP) {
+      const spacing = [...pixelSpacing, 1];
+      // assumption: uniform Z spacing
+      const zVec = vec3.create();
+      const firstIPP = imagePositionPatient;
+      vec3.sub(zVec, secondIPP as vec3, firstIPP as vec3);
+      spacing[2] = vec3.len(zVec) || 1;
+      image.setSpacing(spacing);
+    }
+  }
+
+  if (imageOrientationPatient) {
+    const zDir = vec3.create() as Vector3;
+    vec3.cross(
+      zDir,
+      imageOrientationPatient.slice(0, 3) as vec3,
+      imageOrientationPatient.slice(3, 6) as vec3
+    );
+    image.setDirection([...imageOrientationPatient, ...zDir] as mat3);
+  }
+
+  const dataArray = vtkDataArray.newInstance({
+    numberOfComponents: samplesPerPixel,
+    values: pixelData,
+  });
+  image.getPointData().setScalars(dataArray);
+
+  return image;
+}
+
 export const useDICOMStore = defineStore('dicom', {
   state: (): State => ({
     sliceData: {},
@@ -130,19 +245,65 @@ export const useDICOMStore = defineStore('dicom', {
     volumeStudy: {},
     studyPatient: {},
     needsRebuild: {},
+
+    volumeChunks: Object.create(null),
   }),
   actions: {
+    async importChunks(chunks: Chunk[]) {
+      if (chunks.length === 0) return [];
+
+      const newChunks = chunks.filter(() => {
+        // identify duplicate chunk via SOPInstanceUID
+        return true;
+      });
+      const volumeChunks = await splitAndSort(
+        newChunks,
+        (chunk) => chunk.metaBlob!
+      );
+
+      Object.entries(volumeChunks).forEach(([volumeId, chks]) => {
+        this._addVolumeChunks(volumeId, chks);
+      });
+
+      return Object.keys(volumeChunks);
+    },
+    _addVolumeChunks(imageId: string, chunks: Chunk[]) {
+      // TODO if volumeId exists, call splitAndSort on all chunks
+      this.volumeChunks[imageId] = chunks;
+      const image = allocateImageFromChunks(chunks);
+      const imageStore = useImageStore();
+      if (imageId in imageStore.dataIndex) {
+        imageStore.updateData(imageId, image);
+      } else {
+        imageStore.addVTKImageData('asdfasdf', image, imageId);
+      }
+
+      // TODO better update mechanism
+      const scalars = image.getPointData().getScalars();
+      scalars.setRange({ min: 0, max: 255 }, 0);
+      const pixelData = scalars.getData() as TypedArray;
+      const dims = image.getDimensions();
+      chunks.forEach(async (chunk, index) => {
+        await chunk.loadData();
+        const result = await readImageBlob(
+          getWorker(),
+          chunk.data!,
+          'file.dcm'
+        );
+        const offset = dims[0] * dims[1] * index;
+        pixelData.set(result.image.data! as TypedArray, offset);
+        image.modified();
+      });
+    },
     async importFiles(datasets: FileDataSource[]) {
       if (!datasets.length) return [];
-
-      const dicomIO = getCurrentDicomIO();
 
       const fileToDataSource = new Map(
         datasets.map((ds) => [ds.fileSrc.file, ds])
       );
       const allFiles = [...fileToDataSource.keys()];
 
-      const volumeToFiles = await dicomIO.categorizeFiles(allFiles);
+      const volumeToFiles = await splitAndSort(allFiles);
       if (Object.keys(volumeToFiles).length === 0)
         throw new Error('No volumes categorized from DICOM file(s)');
 
@@ -163,7 +324,7 @@ export const useDICOMStore = defineStore('dicom', {
         Object.entries(volumeToFiles).map(async ([volumeKey, files]) => {
           // Read tags of first file
           if (!(volumeKey in this.volumeInfo)) {
-            const tags = await readDicomTags(dicomIO, files[0]);
+            const tags = await readDicomTags(files[0]);
             // TODO parse the raw string values
             const patient = {
               PatientID: tags.PatientID || ANONYMOUS_PATIENT_ID,
@@ -312,7 +473,6 @@ export const useDICOMStore = defineStore('dicom', {
       sliceIndex: number,
       asThumbnail = false
     ) {
-      const dicomIO = getCurrentDicomIO();
       const fileStore = useFileStore();
 
       const cacheKey = imageCacheMultiKey(sliceIndex, asThumbnail);
@@ -341,7 +501,7 @@ export const useDICOMStore = defineStore('dicom', {
 
       const sliceFile = volumeFiles[sliceIndex - 1];
 
-      const itkImage = await dicomIO.getVolumeSlice(sliceFile, asThumbnail);
+      const itkImage = await readVolumeSlice(sliceFile, asThumbnail);
 
       this.sliceData[volumeKey][cacheKey] = itkImage;
       return itkImage;
@@ -356,7 +516,6 @@ export const useDICOMStore = defineStore('dicom', {
 
     async buildVolume(volumeKey: string, forceRebuild: boolean = false) {
       const imageStore = useImageStore();
-      const dicomIO = getCurrentDicomIO();
 
       const rebuild = forceRebuild || this.needsRebuild[volumeKey];
 
@@ -368,9 +527,7 @@ export const useDICOMStore = defineStore('dicom', {
       const fileStore = useFileStore();
       const files = fileStore.getFiles(volumeKey);
       if (!files) throw new Error('No files for volume key');
-      const image = vtkITKHelper.convertItkToVtkImage(
-        await dicomIO.buildImage(files)
-      );
+      const image = vtkITKHelper.convertItkToVtkImage(await buildImage(files));
 
       const existingImageID = this.volumeToImageID[volumeKey];
       if (existingImageID) {

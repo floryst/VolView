@@ -10,11 +10,13 @@ interface DataResult {
 }
 
 export interface LoadableResult extends DataResult {
+  type: 'LoadableResult';
   dataID: string;
   dataType: 'image' | 'dicom' | 'model';
 }
 
 export interface ConfigResult extends DataResult {
+  type: 'ConfigResult';
   config: Config;
 }
 
@@ -28,8 +30,6 @@ export interface ImportContext {
   fetchFileCache?: FetchCache<File>;
   // Caches archives. ArchiveFile -> { [archivePath]: File }
   archiveCache?: ArchiveCache;
-  // Records dicom files
-  dicomDataSources?: DataSource[];
 }
 
 export type ImportHandler = Handler<DataSource, ImportResult, ImportContext>;

@@ -145,7 +145,7 @@ export default defineConfig({
         {
           src: resolvePath(
             resolveNodeModulePath('itk-wasm'),
-            'dist/core/web-workers/bundles/itk-wasm-pipeline.min.worker.js'
+            'dist/core/web-workers/bundles/itk-wasm-pipeline.worker.js'
           ),
           dest: 'itk',
         },

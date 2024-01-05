@@ -35,8 +35,9 @@ export type DataSelection = DICOMSelection | ImageSelection;
 export const getImageID = (selection: DataSelection) => {
   if (selection.type === 'image') return selection.dataID;
   if (selection.type === 'dicom') {
+    return selection.volumeKey;
     // possibly undefined because image may not have been made yet
-    return useDICOMStore().volumeToImageID[selection.volumeKey];
+    // return useDICOMStore().volumeToImageID[selection.volumeKey];
   }
 
   const _exhaustiveCheck: never = selection;
@@ -122,9 +123,9 @@ export const useDatasetStore = defineStore('dataset', () => {
 
     // if selection is dicom, call buildVolume
     if (sel.type === 'dicom') {
-      useErrorMessage('Failed to build volume', () =>
-        dicomStore.buildVolume(sel.volumeKey)
-      );
+      // useErrorMessage('Failed to build volume', () =>
+      //   dicomStore.buildVolume(sel.volumeKey)
+      // );
     }
   }
 

@@ -291,7 +291,8 @@ async function loadFiles(
       // pick first error
       const [firstError] = errResult.errors;
       // pick innermost dataset that errored
-      const name = getDataSourceName(firstError.inputDataStackTrace[0]);
+      const [dataSrc] = firstError.inputDataStackTrace;
+      const name = dataSrc ? getDataSourceName(dataSrc) : 'Unknown Source';
       // log error for debugging
       logError(firstError.cause);
       return `- ${name}: ${firstError.message}`;

@@ -36,8 +36,9 @@ export const useImageStore = defineStore('images', {
     metadata: Object.create(null),
   }),
   actions: {
-    addVTKImageData(name: string, imageData: vtkImageData) {
-      const id = useIdStore().nextId();
+    addVTKImageData(name: string, imageData: vtkImageData, id_?: string) {
+      const id = id_ ?? useIdStore().nextId();
+      if (id in this.dataIndex) return id;
 
       this.idList.push(id);
       this.dataIndex[id] = imageData;

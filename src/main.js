@@ -12,7 +12,9 @@ import { createPinia } from 'pinia';
 import vtkProxyManager from '@kitware/vtk.js/Proxy/Core/ProxyManager';
 import vtkMapper from '@kitware/vtk.js/Rendering/Core/Mapper';
 import vtkImageMapper from '@kitware/vtk.js/Rendering/Core/ImageMapper';
+import { setPipelinesBaseUrl, setPipelineWorkerUrl } from '@itk-wasm/dicom';
 
+import itkConfig from '@/src/io/itk/itkConfig';
 import App from './components/App.vue';
 import vuetify from './plugins/vuetify';
 import { FILE_READERS } from './io';
@@ -23,9 +25,15 @@ import ProxyWrapper from './core/proxies';
 import { patchExitPointerLock } from './utils/hacks';
 import { init as initErrorReporting } from './utils/errorReporting';
 import { StoreRegistry } from './plugins/storeRegistry';
+import { initWorker } from './io/itk/worker';
 
 // patches
 patchExitPointerLock();
+
+initWorker();
+
+setPipelinesBaseUrl(itkConfig.pipelinesUrl);
+setPipelineWorkerUrl(itkConfig.pipelineWorkerUrl);
 
 // Initialize global mapper topologies
 // polys and lines in the front

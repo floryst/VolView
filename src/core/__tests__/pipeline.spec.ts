@@ -281,4 +281,27 @@ describe('Pipeline', () => {
       expect.fail('Expected not ok result');
     }
   });
+
+  it('should error with the transformed input', async () => {
+    console.log('----');
+    const handlers: Handler<number>[] = [
+      (n, { execute, done }) => {
+        if (n < 1) {
+          execute(3);
+          return done();
+        }
+        return n + 1;
+      },
+      (n) => {
+        return n * 2;
+      },
+      (n) => {
+        throw new Error(`${n}`);
+      },
+    ];
+
+    const pipeline = new Pipeline<number>(handlers);
+    const result = await pipeline.execute(0);
+    console.log(result);
+  });
 });

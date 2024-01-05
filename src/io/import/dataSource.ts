@@ -36,12 +36,12 @@ export interface ArchiveSource {
 }
 
 /**
- * Used to collect DICOM file data sources.
+ * Represents a collection of data sources.
  *
- * This is currently used for consolidating multiple DICOM files into one
- * DataSource for error stack trace purposes.
+ * This is used for data that is derived from a colleciton of data sources,
+ * e.g. reconstructed DICOM.
  */
-export interface DicomSource {
+export interface CollectionSource {
   // eslint-disable-next-line no-use-before-define
   sources: DataSource[];
 }
@@ -70,8 +70,8 @@ export interface DataSource {
   fileSrc?: FileSource;
   uriSrc?: UriSource;
   archiveSrc?: ArchiveSource;
-  dicomSrc?: DicomSource;
   chunkSrc?: ChunkSource;
+  collectionSrc?: CollectionSource;
   parent?: DataSource;
 }
 
@@ -79,6 +79,16 @@ export interface DataSource {
  * A data source that has a File.
  */
 export type FileDataSource = PartialWithRequired<DataSource, 'fileSrc'>;
+
+/**
+ * An archive member data source.
+ */
+export type ArchiveDataSource = PartialWithRequired<
+  DataSource,
+  'archiveSrc' | 'fileSrc'
+> & {
+  parent: FileDataSource;
+};
 
 export type ChunkDataSource = PartialWithRequired<DataSource, 'chunkSrc'>;
 
@@ -165,8 +175,8 @@ export function getDataSourceName(ds: Maybe<DataSource>): Maybe<string> {
     return ds.uriSrc.name;
   }
 
-  if (ds?.dicomSrc?.sources.length) {
-    const { sources } = ds.dicomSrc;
+  if (ds?.collectionSrc?.sources.length) {
+    const { sources } = ds.collectionSrc;
     const [first] = sources;
     const more = sources.length > 1 ? ` (+${sources.length - 1} more)` : '';
     return `${getDataSourceName(first)}${more}`;

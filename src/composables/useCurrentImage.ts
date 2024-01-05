@@ -38,7 +38,8 @@ export function useCurrentImage() {
       return primarySelection.dataID;
     }
     if (primarySelection?.type === 'dicom') {
-      return volumeToImageID[primarySelection.volumeKey] || null;
+      // return volumeToImageID[primarySelection.volumeKey] || null;
+      return primarySelection.volumeKey || null;
     }
     return null;
   });
