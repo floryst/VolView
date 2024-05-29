@@ -6,7 +6,7 @@
     "strict": true,
     "jsx": "preserve",
     "importHelpers": true,
-    "moduleResolution": "node",
+    "moduleResolution": "Bundler",
     "allowJs": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
